@@ -119,9 +119,7 @@ export default function Play({ onGameEnd }: PlayProps) {
             }
           : s
       );
-      if (data.game_over) {
-        onGameEnd(state.gameId);
-      }
+      // don't auto-navigate — let user choose to review or start new game
     } finally {
       setLoading(false);
     }
@@ -132,7 +130,13 @@ export default function Play({ onGameEnd }: PlayProps) {
     const res = await fetch(`${API}/api/game/${state.gameId}/resign`, { method: "POST" });
     const data = await res.json();
     setState((s) => (s ? { ...s, gameOver: true, result: data.result } : s));
-    if (state) onGameEnd(state.gameId);
+  }
+
+  async function abort() {
+    if (!state) return;
+    await fetch(`${API}/api/game/${state.gameId}/abort`, { method: "POST" });
+    setSelectedSquare(null);
+    setState(null);
   }
 
   function evalBar(evalCp: number | null, playerColor: "white" | "black") {
@@ -202,17 +206,16 @@ export default function Play({ onGameEnd }: PlayProps) {
           <div>Engine ELO: <strong>{state.engineElo}</strong></div>
           {evalBar(state.evalCp, state.playerColor)}
           {state.gameOver ? (
-            <div>
-              <strong>Game Over</strong> — {state.result}
-              <br />
-              <button onClick={() => setState(null)} style={{ marginTop: 8 }}>
-                New Game
-              </button>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <strong>Game Over — {state.result}</strong>
+              <button onClick={() => onGameEnd(state!.gameId)}>Review Game</button>
+              <button onClick={() => setState(null)}>New Game</button>
             </div>
           ) : (
-            <button onClick={resign} disabled={loading} style={{ marginTop: 8 }}>
-              Resign
-            </button>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+              <button onClick={resign} disabled={loading}>Resign</button>
+              <button onClick={abort} style={{ color: "#888" }}>Abort</button>
+            </div>
           )}
           {loading && (
             <div style={{ color: "#888", fontSize: 12 }}>Engine thinking...</div>

@@ -169,6 +169,17 @@ def make_move(game_id: int, req: MoveRequest, db: Session = Depends(get_db)):
     }
 
 
+@app.post("/api/game/{game_id}/abort")
+def abort_game(game_id: int, db: Session = Depends(get_db)):
+    game = db.get(Game, game_id)
+    if not game:
+        raise HTTPException(404, "Game not found")
+    db.query(Move).filter(Move.game_id == game_id).delete()
+    db.delete(game)
+    db.commit()
+    return {"status": "aborted"}
+
+
 @app.post("/api/game/{game_id}/analyze")
 def analyze(game_id: int, db: Session = Depends(get_db)):
     game = db.get(Game, game_id)
