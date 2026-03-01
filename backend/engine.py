@@ -9,10 +9,13 @@ STOCKFISH_PATH = shutil.which("stockfish") or "/home/ccollins/projects/chess/.ve
 class ChessEngine:
     """Wrapper around Stockfish for move generation and position evaluation."""
 
-    def __init__(self, elo: int = 1500, stockfish_path: str = STOCKFISH_PATH):
+    def __init__(self, elo: int = 1500, stockfish_path: str = STOCKFISH_PATH, full_strength: bool = False):
         self._engine = chess.engine.SimpleEngine.popen_uci(stockfish_path)
         self.elo = elo
-        self._set_elo(elo)
+        if full_strength:
+            self._engine.configure({"UCI_LimitStrength": False})
+        else:
+            self._set_elo(elo)
 
     def _set_elo(self, elo: int):
         self._engine.configure({"UCI_LimitStrength": True, "UCI_Elo": elo})

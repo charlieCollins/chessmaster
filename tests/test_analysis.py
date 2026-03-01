@@ -25,10 +25,14 @@ client = TestClient(app)
 
 @pytest.fixture(autouse=True)
 def apply_db_override():
-    """Re-apply the DB override before each test to prevent other test modules from clobbering it."""
+    """Re-apply the DB override before each test; restore whatever was there before."""
+    previous = app.dependency_overrides.get(get_db)
     app.dependency_overrides[get_db] = override_get_db
     yield
-    app.dependency_overrides[get_db] = override_get_db
+    if previous is None:
+        app.dependency_overrides.pop(get_db, None)
+    else:
+        app.dependency_overrides[get_db] = previous
 
 
 def test_classify_move_boundaries():

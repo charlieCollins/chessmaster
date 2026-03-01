@@ -25,7 +25,7 @@ def analyze_game(game_id: int, db: Session) -> None:
     if not moves:
         return
 
-    eng = ChessEngine(elo=3190)  # full strength for analysis
+    eng = ChessEngine(full_strength=True)  # full strength for analysis
     try:
         board = chess.Board()
         for move_record in moves:
