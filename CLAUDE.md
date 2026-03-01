@@ -5,18 +5,24 @@ Runs entirely on localhost, single user, no auth.
 
 ## Quick Start
 
-### Backend
+### One command (recommended)
 ```bash
+./chess.sh          # start backend + frontend
+./chess.sh stop     # stop both
+```
+
+- Backend:  http://localhost:8000
+- Frontend: http://localhost:5174
+
+### Manual
+```bash
+# Terminal 1 — backend
 source .venv/bin/activate
 pip install -r requirements.txt   # first time only
 uvicorn backend.main:app --reload
-# API at http://localhost:8000
-```
 
-### Frontend
-```bash
+# Terminal 2 — frontend
 cd frontend && npm install && npm run dev
-# App at http://localhost:5173
 ```
 
 ### Tests

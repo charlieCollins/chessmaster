@@ -23,7 +23,7 @@ start() {
 
     echo ""
     echo "  Backend:  http://localhost:8000"
-    echo "  Frontend: http://localhost:5173"
+    echo "  Frontend: http://localhost:5174"
     echo ""
     echo "Press Ctrl+C to stop, or run './chess.sh stop' from another terminal."
 
