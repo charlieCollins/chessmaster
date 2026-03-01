@@ -9,3 +9,4 @@ build/
 .env
 chess.db
 frontend/dist/
+.chess.pids
