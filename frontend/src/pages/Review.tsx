@@ -37,6 +37,10 @@ export default function Review({ gameId }: ReviewProps) {
   const [analyzing, setAnalyzing] = useState(false);
 
   useEffect(() => {
+    setCurrentPly(0);
+  }, [gameId]);
+
+  useEffect(() => {
     fetch(`${API}/api/game/${gameId}`)
       .then((r) => r.json())
       .then(setGame);
@@ -55,10 +59,16 @@ export default function Review({ gameId }: ReviewProps) {
 
   function getFenAtPly(moves: MoveRecord[], ply: number): string {
     const chess = new Chess();
+    let lastValidFen = chess.fen();
     for (let i = 0; i < ply; i++) {
-      chess.move(moves[i].san);
+      try {
+        chess.move(moves[i].san);
+        lastValidFen = chess.fen();
+      } catch {
+        break;
+      }
     }
-    return chess.fen();
+    return lastValidFen;
   }
 
   if (!game) return <div>Loading...</div>;
