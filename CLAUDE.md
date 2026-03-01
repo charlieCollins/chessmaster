@@ -76,6 +76,17 @@ source .venv/bin/activate && pytest -v
 
 Test files use `os.environ["DATABASE_URL"] = "sqlite://"` at module level (before backend imports) to redirect to an in-memory database.
 
+## Hosting & Infrastructure
+
+- **Domain**: chess.azimondia.com (subdomain of azimondia.com)
+- **DNS / CDN**: Cloudflare (orange-cloud proxy, SSL/TLS mode: Full Strict)
+- **Origin server**: GCP Compute Engine e2-micro (free tier VM)
+- **SSL**: Cloudflare Origin Certificate — wildcard `*.azimondia.com` at `/etc/ssl/cloudflare/cert.pem` + `key.pem`
+  - Same cert shared by all azimondia.com subdomains (recipes, chess, flight, etc.)
+  - Each subdomain gets its own nginx `sites-available/` config file
+- **App deployment**: nginx serves `frontend/dist/` as SPA, proxies `/api/` to uvicorn via unix socket
+- **nginx config**: `deploy/nginx.conf` → `/etc/nginx/sites-available/chess`
+
 ## Phases (Roadmap)
 
 - **Phase 1** (current): Play vs engine + save + post-game analysis

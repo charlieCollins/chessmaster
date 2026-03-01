@@ -1,0 +1,17 @@
+[Unit]
+Description=Chess Trainer App (uvicorn)
+After=network.target
+
+[Service]
+User=chess
+Group=www-data
+WorkingDirectory=/opt/chess
+Environment="DATABASE_URL=sqlite:////opt/chess/data/chess.db"
+RuntimeDirectory=chess
+ExecStart=/opt/chess/.venv/bin/uvicorn backend.main:app --uds /run/chess/chess.sock
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
