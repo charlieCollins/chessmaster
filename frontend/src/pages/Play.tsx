@@ -110,6 +110,7 @@ export default function Play({ onGameEnd }: PlayProps) {
     setState((s) => s ? { ...s, fen: chess.fen() } : s);
 
     setLoading(true);
+    const moveStart = Date.now();
     try {
       const res = await fetch(`${API}/api/game/${state.gameId}/move`, {
         method: "POST",
@@ -118,7 +119,11 @@ export default function Play({ onGameEnd }: PlayProps) {
       });
       if (!res.ok) return;
       const data = await res.json();
-      if (data.engine_move) await new Promise((r) => setTimeout(r, 1000));
+      if (data.engine_move) {
+        const elapsed = Date.now() - moveStart;
+        const remaining = Math.max(0, 500 - elapsed);
+        if (remaining > 0) await new Promise((r) => setTimeout(r, remaining));
+      }
       setState((s) =>
         s
           ? {
