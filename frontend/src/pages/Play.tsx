@@ -137,10 +137,11 @@ export default function Play({ onGameEnd }: PlayProps) {
         <div style={{ marginBottom: 12 }}>
           <label>Engine ELO:{" "}
             <select value={eloChoice} onChange={(e) => setEloChoice(Number(e.target.value))}>
-              <option value={800}>800 (Beginner)</option>
-              <option value={1200}>1200 (Casual)</option>
-              <option value={1500}>1500 (Intermediate)</option>
-              <option value={2000}>2000 (Strong)</option>
+              <option value={400}>400 (Just learning)</option>
+              <option value={800}>800 (Novice)</option>
+              <option value={1200}>1200 (Intermediate)</option>
+              <option value={1500}>1500 (Club player)</option>
+              <option value={2000}>2000 (Expert)</option>
             </select>
           </label>
         </div>
