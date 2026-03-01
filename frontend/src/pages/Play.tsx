@@ -1,6 +1,7 @@
 // frontend/src/pages/Play.tsx
 import { useState, useCallback } from "react";
 import { Chessboard } from "react-chessboard";
+import { Chess } from "chess.js";
 
 const API = "http://localhost:8000";
 
@@ -23,6 +24,7 @@ export default function Play({ onGameEnd }: PlayProps) {
   const [loading, setLoading] = useState(false);
   const [colorChoice, setColorChoice] = useState<"white" | "black">("white");
   const [eloChoice, setEloChoice] = useState(1500);
+  const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
 
   async function startGame() {
     setLoading(true);
@@ -67,6 +69,32 @@ export default function Play({ onGameEnd }: PlayProps) {
       return true;
     },
     [state, loading]
+  );
+
+  const onSquareClick = useCallback(
+    ({ square, piece }: { square: string; piece?: { pieceType: string } | null }) => {
+      if (!state || state.gameOver || loading) return;
+
+      if (selectedSquare) {
+        // second click — attempt move
+        const uci = selectedSquare + square;
+        const chess = new Chess(state.fen);
+        const movingPiece = chess.get(selectedSquare as any);
+        const isPromotion =
+          movingPiece?.type === "p" &&
+          ((movingPiece.color === "w" && square[1] === "8") ||
+            (movingPiece.color === "b" && square[1] === "1"));
+        setSelectedSquare(null);
+        makeMove(uci + (isPromotion ? "q" : ""));
+      } else if (piece) {
+        // first click — select the piece (only player's own pieces)
+        const isPlayerPiece =
+          (state.playerColor === "white" && piece.pieceType.startsWith("w")) ||
+          (state.playerColor === "black" && piece.pieceType.startsWith("b"));
+        if (isPlayerPiece) setSelectedSquare(square);
+      }
+    },
+    [state, loading, selectedSquare]
   );
 
   async function makeMove(uci: string) {
@@ -160,8 +188,12 @@ export default function Play({ onGameEnd }: PlayProps) {
             options={{
               position: state.fen,
               onPieceDrop: onDrop,
+              onSquareClick: onSquareClick,
               boardOrientation: state.playerColor,
               boardStyle: { width: 500, height: 500 },
+              squareStyles: selectedSquare
+                ? { [selectedSquare]: { backgroundColor: "rgba(255, 255, 0, 0.5)" } }
+                : {},
             }}
           />
         </div>
