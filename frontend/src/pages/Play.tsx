@@ -17,6 +17,7 @@ interface GameState {
   gameOver: boolean;
   result: string | null;
   evalCp: number | null;
+  lastMoveDelta: number | null;  // eval gained (+) or lost (-) by player's last move
 }
 
 export default function Play({ onGameEnd }: PlayProps) {
@@ -43,6 +44,7 @@ export default function Play({ onGameEnd }: PlayProps) {
         gameOver: false,
         result: null,
         evalCp: null,
+        lastMoveDelta: null,
       });
     } finally {
       setLoading(false);
@@ -109,6 +111,7 @@ export default function Play({ onGameEnd }: PlayProps) {
     }
     setState((s) => s ? { ...s, fen: chess.fen() } : s);
 
+    const evalBeforeMove = state.evalCp;
     setLoading(true);
     const moveStart = Date.now();
     try {
@@ -124,12 +127,21 @@ export default function Play({ onGameEnd }: PlayProps) {
         const remaining = Math.max(0, 500 - elapsed);
         if (remaining > 0) await new Promise((r) => setTimeout(r, remaining));
       }
+      const newEval: number | null = data.eval_cp ?? null;
+      let lastMoveDelta: number | null = null;
+      if (evalBeforeMove !== null && newEval !== null) {
+        // positive delta = player gained eval (good), negative = lost eval (bad)
+        lastMoveDelta = state.playerColor === "white"
+          ? newEval - evalBeforeMove
+          : evalBeforeMove - newEval;
+      }
       setState((s) =>
         s
           ? {
               ...s,
               fen: data.fen,
-              evalCp: data.eval_cp ?? null,
+              evalCp: newEval,
+              lastMoveDelta,
               gameOver: data.game_over,
               result: data.result ?? null,
             }
@@ -154,18 +166,25 @@ export default function Play({ onGameEnd }: PlayProps) {
     setState(null);
   }
 
-  function evalBar(evalCp: number | null, playerColor: "white" | "black") {
+  function fmt(cp: number) {
+    return cp > 0 ? `+${(cp / 100).toFixed(2)}` : (cp / 100).toFixed(2);
+  }
+
+  function evalDisplay(evalCp: number | null, lastMoveDelta: number | null, playerColor: "white" | "black") {
     if (evalCp === null) return null;
-    const fromPlayerPov = playerColor === "white" ? evalCp : -evalCp;
-    const display =
-      fromPlayerPov > 0
-        ? `+${(fromPlayerPov / 100).toFixed(2)}`
-        : (fromPlayerPov / 100).toFixed(2);
-    const color = fromPlayerPov >= 0 ? "#4a9" : "#c55";
+    const pos = playerColor === "white" ? evalCp : -evalCp;
+    const posColor = pos >= 0 ? "#4a9" : "#c55";
     return (
-      <span style={{ color, fontWeight: "bold", fontSize: 14 }}>
-        Eval: {display}
-      </span>
+      <div style={{ fontSize: 13, display: "flex", flexDirection: "column", gap: 2 }}>
+        <span style={{ color: posColor }}>
+          <strong>Position:</strong> {fmt(pos)}
+        </span>
+        {lastMoveDelta !== null && (
+          <span style={{ color: lastMoveDelta >= 0 ? "#4a9" : "#c55" }}>
+            <strong>Last move:</strong> {fmt(lastMoveDelta)}
+          </span>
+        )}
+      </div>
     );
   }
 
@@ -219,7 +238,7 @@ export default function Play({ onGameEnd }: PlayProps) {
         <div style={{ paddingTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
           <div>Playing as: <strong>{state.playerColor}</strong></div>
           <div>Engine ELO: <strong>{state.engineElo}</strong></div>
-          {evalBar(state.evalCp, state.playerColor)}
+          {evalDisplay(state.evalCp, state.lastMoveDelta, state.playerColor)}
           {state.gameOver ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <strong>Game Over — {state.result}</strong>
