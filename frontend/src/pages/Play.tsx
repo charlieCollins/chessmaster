@@ -99,6 +99,16 @@ export default function Play({ onGameEnd }: PlayProps) {
 
   async function makeMove(uci: string) {
     if (!state) return;
+
+    // Optimistically show the player's move immediately
+    const chess = new Chess(state.fen);
+    try {
+      chess.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] });
+    } catch {
+      return; // illegal move, bail
+    }
+    setState((s) => s ? { ...s, fen: chess.fen() } : s);
+
     setLoading(true);
     try {
       const res = await fetch(`${API}/api/game/${state.gameId}/move`, {
@@ -120,7 +130,6 @@ export default function Play({ onGameEnd }: PlayProps) {
             }
           : s
       );
-      // don't auto-navigate — let user choose to review or start new game
     } finally {
       setLoading(false);
     }
