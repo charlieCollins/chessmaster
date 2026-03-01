@@ -108,6 +108,7 @@ export default function Play({ onGameEnd }: PlayProps) {
       });
       if (!res.ok) return;
       const data = await res.json();
+      if (data.engine_move) await new Promise((r) => setTimeout(r, 1000));
       setState((s) =>
         s
           ? {
