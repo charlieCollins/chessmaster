@@ -21,7 +21,7 @@ class Game(Base):
     result = Column(String, default="*")        # "1-0", "0-1", "1/2-1/2", "*"
     player_color = Column(String, default="white")  # "white" or "black"
     engine_elo = Column(Integer, default=1500)
-    played_at = Column(DateTime, default=datetime.datetime.utcnow)
+    played_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     source = Column(String, default="local")
     analyzed = Column(Integer, default=0)       # 0 = not analyzed, 1 = analyzed
 
