@@ -8,3 +8,4 @@ dist/
 build/
 .env
 chess.db
+frontend/dist/
