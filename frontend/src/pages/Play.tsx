@@ -1,7 +1,6 @@
 // frontend/src/pages/Play.tsx
 import { useState, useCallback } from "react";
 import { Chessboard } from "react-chessboard";
-import { Chess } from "chess.js";
 
 const API = "http://localhost:8000";
 
@@ -49,16 +48,19 @@ export default function Play({ onGameEnd }: PlayProps) {
   }
 
   const onDrop = useCallback(
-    ({ sourceSquare, targetSquare }: { piece: { isSparePiece: boolean; position: string; pieceType: string }; sourceSquare: string; targetSquare: string | null }): boolean => {
-      if (!state || state.gameOver || loading) return false;
-      if (!targetSquare) return false;
+    ({ piece, sourceSquare, targetSquare }: {
+      piece: { isSparePiece: boolean; position: string; pieceType: string };
+      sourceSquare: string;
+      targetSquare: string | null;
+    }): boolean => {
+      if (!state || state.gameOver || loading || !targetSquare) return false;
 
-      const chess = new Chess(state.fen);
-      const movingPiece = chess.get(sourceSquare as any);
+      // piece.pieceType is e.g. "wP" (white pawn) or "bP" (black pawn)
+      const isPawn = piece.pieceType.endsWith("P");
       const isPromotion =
-        movingPiece?.type === "p" &&
-        ((movingPiece.color === "w" && targetSquare[1] === "8") ||
-          (movingPiece.color === "b" && targetSquare[1] === "1"));
+        isPawn &&
+        ((piece.pieceType.startsWith("w") && targetSquare[1] === "8") ||
+          (piece.pieceType.startsWith("b") && targetSquare[1] === "1"));
       const uci = sourceSquare + targetSquare + (isPromotion ? "q" : "");
 
       makeMove(uci);
@@ -98,7 +100,7 @@ export default function Play({ onGameEnd }: PlayProps) {
   }
 
   async function resign() {
-    if (!state || state.gameOver) return;
+    if (!state || state.gameOver || loading) return;
     const res = await fetch(`${API}/api/game/${state.gameId}/resign`, { method: "POST" });
     const data = await res.json();
     setState((s) => (s ? { ...s, gameOver: true, result: data.result } : s));
