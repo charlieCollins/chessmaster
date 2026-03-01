@@ -9,6 +9,7 @@ import chess
 from .db import get_db, Game, Move, init_db
 from .engine import ChessEngine
 from .game_utils import reconstruct_board, generate_pgn
+from .analysis import analyze_game
 
 
 # ── Engine lifecycle ──────────────────────────────────────────────────────────
@@ -166,6 +167,17 @@ def make_move(game_id: int, req: MoveRequest, db: Session = Depends(get_db)):
         "game_over": ended["game_over"] if ended else False,
         "result": ended["result"] if ended else None,
     }
+
+
+@app.post("/api/game/{game_id}/analyze")
+def analyze(game_id: int, db: Session = Depends(get_db)):
+    game = db.get(Game, game_id)
+    if not game:
+        raise HTTPException(404, "Game not found")
+    if game.result == "*":
+        raise HTTPException(400, "Game is still in progress")
+    analyze_game(game_id, db)
+    return {"status": "analyzed", "game_id": game_id}
 
 
 @app.post("/api/game/{game_id}/resign")
