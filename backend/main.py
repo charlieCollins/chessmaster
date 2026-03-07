@@ -10,10 +10,12 @@ from .db import get_db, Game, Move, init_db
 from .engine import ChessEngine
 from .game_utils import reconstruct_board, generate_pgn
 from .analysis import analyze_game
+from .config import CORS_ORIGINS, HINT_TIME, ENGINE_MOVE_TIME, DEFAULT_ENGINE_ELO
 
 
 # ── Engine lifecycle ──────────────────────────────────────────────────────────
 _engine_instance: ChessEngine | None = None
+_hint_engine: ChessEngine | None = None   # full-strength; separate from game engine
 
 def _get_engine(elo: int = 1500) -> ChessEngine:
     global _engine_instance
@@ -23,6 +25,12 @@ def _get_engine(elo: int = 1500) -> ChessEngine:
         _engine_instance.set_elo(elo)
     return _engine_instance
 
+def _get_hint_engine() -> ChessEngine:
+    global _hint_engine
+    if _hint_engine is None:
+        _hint_engine = ChessEngine(full_strength=True)
+    return _hint_engine
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -30,13 +38,15 @@ async def lifespan(app: FastAPI):
     yield
     if _engine_instance:
         _engine_instance.close()
+    if _hint_engine:
+        _hint_engine.close()
 
 
 app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:5174"],
+    allow_origins=CORS_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -45,10 +55,13 @@ app.add_middleware(
 # ── Request models ────────────────────────────────────────────────────────────
 class StartGameRequest(BaseModel):
     player_color: str = "white"
-    engine_elo: int = 1500
+    engine_elo: int = DEFAULT_ENGINE_ELO
 
 class MoveRequest(BaseModel):
     uci: str
+
+class BestMoveRequest(BaseModel):
+    fen: str
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -110,6 +123,7 @@ def get_game(game_id: int, db: Session = Depends(get_db)):
         "result": game.result,
         "player_color": game.player_color,
         "analyzed": bool(game.analyzed),
+        "assisted": bool(game.assisted),
         "moves": [
             {
                 "ply": m.ply,
@@ -169,6 +183,17 @@ def make_move(game_id: int, req: MoveRequest, db: Session = Depends(get_db)):
     }
 
 
+@app.delete("/api/game/{game_id}")
+def delete_game(game_id: int, db: Session = Depends(get_db)):
+    game = db.get(Game, game_id)
+    if not game:
+        raise HTTPException(404, "Game not found")
+    db.query(Move).filter(Move.game_id == game_id).delete()
+    db.delete(game)
+    db.commit()
+    return {"status": "deleted"}
+
+
 @app.post("/api/game/{game_id}/abort")
 def abort_game(game_id: int, db: Session = Depends(get_db)):
     game = db.get(Game, game_id)
@@ -189,6 +214,101 @@ def analyze(game_id: int, db: Session = Depends(get_db)):
         raise HTTPException(400, "Game is still in progress")
     analyze_game(game_id, db)
     return {"status": "analyzed", "game_id": game_id}
+
+
+@app.get("/api/games")
+def list_games(db: Session = Depends(get_db)):
+    games = (
+        db.query(Game)
+        .filter(Game.result != "*")
+        .order_by(Game.played_at.desc())
+        .all()
+    )
+    rows = []
+    for g in games:
+        move_count = db.query(Move).filter(Move.game_id == g.id).count()
+        rows.append({
+            "game_id": g.id,
+            "result": g.result,
+            "player_color": g.player_color,
+            "engine_elo": g.engine_elo,
+            "played_at": g.played_at.isoformat() + "Z" if g.played_at else None,
+            "analyzed": bool(g.analyzed),
+            "assisted": bool(g.assisted),
+            "move_count": move_count,
+        })
+    return rows
+
+
+@app.get("/api/stats")
+def get_stats(db: Session = Depends(get_db)):
+    games = db.query(Game).filter(Game.result != "*").all()
+    total = len(games)
+    wins = losses = draws = 0
+    for g in games:
+        if g.result == "1/2-1/2":
+            draws += 1
+        elif (g.player_color == "white" and g.result == "1-0") or \
+             (g.player_color == "black" and g.result == "0-1"):
+            wins += 1
+        else:
+            losses += 1
+
+    # Accuracy: % of player's own moves that are best or good (analyzed games only)
+    counts: dict[str, int] = {}
+    player_total = 0
+    for g in games:
+        if not g.analyzed:
+            continue
+        moves = db.query(Move).filter(Move.game_id == g.id).all()
+        for m in moves:
+            is_player = (g.player_color == "white" and m.ply % 2 == 1) or \
+                        (g.player_color == "black" and m.ply % 2 == 0)
+            if is_player and m.classification:
+                counts[m.classification] = counts.get(m.classification, 0) + 1
+                player_total += 1
+
+    accuracy = None
+    if player_total > 0:
+        good_moves = counts.get("best", 0) + counts.get("good", 0)
+        accuracy = round(good_moves / player_total * 100, 1)
+
+    return {
+        "total": total,
+        "wins": wins,
+        "losses": losses,
+        "draws": draws,
+        "accuracy": accuracy,
+        "move_counts": counts,
+        "analyzed_games": sum(1 for g in games if g.analyzed),
+    }
+
+
+@app.get("/api/game/{game_id}/hint")
+def get_hint(game_id: int, db: Session = Depends(get_db)):
+    game = db.get(Game, game_id)
+    if not game:
+        raise HTTPException(404, "Game not found")
+    board = reconstruct_board(game_id, db)
+    uci = _get_hint_engine().get_best_move(board.fen(), time_limit=HINT_TIME)
+    # Mark as assisted only while the game is still in progress
+    if game.result == "*" and not game.assisted:
+        game.assisted = 1
+        db.commit()
+    return {"from_sq": uci[:2], "to_sq": uci[2:4]}
+
+
+@app.post("/api/engine/best")
+def engine_best(req: BestMoveRequest):
+    """Return the engine's best move for a given FEN. Not tracked as assisted."""
+    try:
+        board = chess.Board(req.fen)
+    except ValueError:
+        raise HTTPException(400, "Invalid FEN")
+    if board.is_game_over():
+        raise HTTPException(400, "Position is terminal")
+    uci = _get_hint_engine().get_best_move(board.fen(), time_limit=HINT_TIME)
+    return {"from_sq": uci[:2], "to_sq": uci[2:4]}
 
 
 @app.post("/api/game/{game_id}/resign")

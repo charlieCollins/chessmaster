@@ -46,8 +46,8 @@ def test_classify_move():
     assert classify_move(99) == "inaccuracy"
     assert classify_move(50) == "inaccuracy"
     assert classify_move(49) == "good"
-    assert classify_move(0) == "good"
-    assert classify_move(-10) == "good"   # actually gained eval
+    assert classify_move(0) == "best"
+    assert classify_move(-10) == "best"   # actually gained eval
 
 def test_generate_pgn(db):
     game = _make_game_with_moves(db)

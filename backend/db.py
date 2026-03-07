@@ -1,7 +1,7 @@
 # backend/db.py
 import os
 import datetime
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./chess.db")
@@ -24,6 +24,7 @@ class Game(Base):
     played_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     source = Column(String, default="local")
     analyzed = Column(Integer, default=0)       # 0 = not analyzed, 1 = analyzed
+    assisted = Column(Integer, default=0)       # 1 if player used hint during this game
 
 
 class Move(Base):
@@ -41,6 +42,16 @@ class Move(Base):
 
 def init_db():
     Base.metadata.create_all(_engine)
+    # Safe migrations for columns added after initial schema
+    with _engine.connect() as conn:
+        for stmt in [
+            "ALTER TABLE games ADD COLUMN assisted INTEGER DEFAULT 0",
+        ]:
+            try:
+                conn.execute(text(stmt))
+                conn.commit()
+            except Exception:
+                pass  # Column already exists
 
 
 def get_db_session() -> Session:

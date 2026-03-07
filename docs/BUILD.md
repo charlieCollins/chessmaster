@@ -3,12 +3,13 @@
 ## Local Development
 
 ```bash
-./chess.sh          # start backend + frontend dev servers
-./chess.sh stop     # stop them
+./chess.sh           # start backend + frontend dev servers
+./chess.sh stop      # stop them
+./chess.sh restart   # stop then start (useful after code changes)
 ```
 
 - Backend: http://localhost:8000
-- Frontend: http://localhost:5173
+- Frontend: http://localhost:5174
 
 `chess.sh` manages both processes together and streams their logs. It requires a venv and npm deps already installed (see First-Time Local Setup below).
 

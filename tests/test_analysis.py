@@ -43,8 +43,8 @@ def test_classify_move_boundaries():
     assert classify_move(99) == "inaccuracy"
     assert classify_move(50) == "inaccuracy"
     assert classify_move(49) == "good"
-    assert classify_move(0) == "good"
-    assert classify_move(-30) == "good"
+    assert classify_move(0) == "best"
+    assert classify_move(-30) == "best"
 
 def test_analyze_completed_game():
     # Start a game and make a couple of moves
@@ -72,7 +72,7 @@ def test_analyze_completed_game():
     moves = state.json()["moves"]
     player_moves = [m for m in moves if m["ply"] % 2 == 1]  # white's moves (odd ply)
     for m in player_moves:
-        assert m["classification"] in ("blunder", "mistake", "inaccuracy", "good")
+        assert m["classification"] in ("blunder", "mistake", "inaccuracy", "good", "best")
 
 def test_analyze_in_progress_game_returns_400():
     game_res = client.post("/api/game", json={"player_color": "white", "engine_elo": 1500})

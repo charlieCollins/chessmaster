@@ -44,7 +44,8 @@ stop() {
 }
 
 case "${1:-start}" in
-    start) start ;;
-    stop)  stop  ;;
-    *) echo "Usage: $0 [start|stop]" ; exit 1 ;;
+    start)   start ;;
+    stop)    stop  ;;
+    restart) stop; sleep 1; start ;;
+    *) echo "Usage: $0 [start|stop|restart]" ; exit 1 ;;
 esac

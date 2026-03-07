@@ -38,11 +38,13 @@ def generate_pgn(game_id: int, db: Session) -> str:
 
 def classify_move(eval_loss_cp: float) -> str:
     """Classify a move based on centipawn loss vs best move."""
-    if eval_loss_cp >= 200:
-        return "blunder"
-    elif eval_loss_cp >= 100:
-        return "mistake"
-    elif eval_loss_cp >= 50:
-        return "inaccuracy"
-    else:
+    if eval_loss_cp <= 0:
+        return "best"
+    elif eval_loss_cp < 50:
         return "good"
+    elif eval_loss_cp < 100:
+        return "inaccuracy"
+    elif eval_loss_cp < 200:
+        return "mistake"
+    else:
+        return "blunder"
