@@ -1,7 +1,7 @@
 # Chess Trainer
 
 Self-hosted chess trainer web app. FastAPI backend + React (Vite TS) frontend.
-Runs entirely on localhost, single user, no auth.
+Runs on localhost, single user, no auth. (Public hosting is planned but not working yet — see `TODO.md`.)
 
 ## Quick Start
 
@@ -19,12 +19,14 @@ Runs entirely on localhost, single user, no auth.
 ```bash
 # Terminal 1 — backend
 source .venv/bin/activate
-pip install -r requirements.txt   # first time only
+pip install -r requirements-dev.txt   # first time only (runtime deps: requirements.txt)
 uvicorn backend.main:app --reload
 
 # Terminal 2 — frontend
 cd frontend && npm install && npm run dev
 ```
+
+The Vite dev server proxies `/api` to `localhost:8000`, so the frontend always calls same-origin `/api/...`.
 
 ### Tests
 ```bash
@@ -35,36 +37,38 @@ pytest -v
 ## Architecture
 
 - `backend/main.py` — FastAPI app, routes, lifespan (engine init/shutdown)
-- `backend/engine.py` — Stockfish wrapper (`get_best_move`, `evaluate`, `full_strength` param)
+- `backend/engine.py` — Stockfish wrapper (`get_best_move`, `evaluate`, `full_strength` param) + `EngineSlot` (lock + auto-restart after a Stockfish crash)
 - `backend/db.py` — SQLAlchemy models: Game, Move. SQLite at `chess.db` (env: `DATABASE_URL`)
-- `backend/game_utils.py` — `reconstruct_board`, `generate_pgn`, `classify_move`
+- `backend/game_utils.py` — `reconstruct_board`, `generate_pgn`, win%-based `classify_move`, shared `accuracy_summary`
 - `backend/analysis.py` — Post-game analysis: iterates all moves, classifies each with full-strength Stockfish
-- `backend/config.py` — App configuration: timing constants (ENGINE_MOVE_TIME, HINT_TIME, ANALYSIS_TIME), DEFAULT_ENGINE_ELO, CORS_ORIGINS
+- `backend/config.py` — App configuration: timing constants (ENGINE_MOVE_TIME, HINT_TIME, ANALYSIS_TIME, LIVE_EVAL_TIME), DEFAULT_ENGINE_ELO, CORS_ORIGINS
 - `frontend/src/App.tsx` — Routing shell (Home / Play / Learn / Review pages)
 - `frontend/src/themes.ts` — Theme definitions: Classic, Forest, Ocean, Night, Autumn, Obsidian; maps theme names to CSS variable overrides
-- `frontend/src/config.ts` — Frontend config: exports `API = "http://localhost:8000"` and other constants
+- `frontend/src/config.ts` — Frontend config: `API` base (default `""` = same origin; override via `VITE_API_BASE`) and UI timing constants
+- `frontend/src/classify.ts` — Win%-based move classification for live Play highlights (mirrors `game_utils.py`)
 - `frontend/src/pages/Home.tsx` — Dashboard: win/loss stats + completed game history table
 - `frontend/src/pages/Play.tsx` — Interactive board, play vs engine, color/ELO selection, eval bar, hint, best-reply
 - `frontend/src/pages/Review.tsx` — Annotated game replay with nav controls, run-analysis button, accuracy score
-- `frontend/src/pages/Learn.tsx` — Lesson pages (Knights, Bishops, Rooks, Queens, Kings, Openings hub + detail)
-- `frontend/src/data/openings.ts` — Opening data: 9 openings × 3–4 lines each with SAN move sequences
+- `frontend/src/pages/Learn.tsx` — Lesson pages (Knights, Bishops, Rooks, Pawns, Queens, Kings, Openings hub + detail)
+- `frontend/src/data/openings.ts` — Opening data: 18 openings (58 lines) with SAN move sequences
 
 ## API Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/api/game` | Start new game (`player_color`, `engine_elo`) |
-| GET | `/api/game/{id}` | Get game state + moves |
-| POST | `/api/game/{id}/move` | Make a move (returns engine response + eval) |
+| GET | `/api/game/{id}` | Get game state + moves (+ per-side `accuracy` once analyzed) |
+| POST | `/api/game/{id}/move` | Make a move. Returns engine reply, `eval_cp` (after your move), `engine_eval_cp` (after the reply), `termination`. Nothing is saved if the engine fails. |
+| POST | `/api/game/{id}/takeback` | Undo last two plies (marks game `assisted=1`) |
 | POST | `/api/game/{id}/resign` | Resign the game |
 | DELETE | `/api/game/{id}` | Delete a game and its moves |
 | POST | `/api/game/{id}/analyze` | Run post-game Stockfish analysis (~4–30s (depends on game length)) |
 | GET | `/api/game/{id}/hint` | Best move for current position (marks game `assisted=1`) |
-| POST | `/api/engine/best` | Best move for any FEN (`{fen}`) — NOT tracked as assisted |
-| GET | `/api/games` | List all completed games |
+| POST | `/api/engine/best` | Best move for any FEN (`{fen}`) — NOT tracked as assisted; rejects impossible positions (they crash Stockfish) |
+| GET | `/api/games` | List completed games (with player `accuracy`) |
 | GET | `/api/stats` | Aggregate win/loss/accuracy stats |
 
-**Note on `GET /api/game/{id}` moves:** Per-move `eval_cp` and `eval_loss_cp` are stored in the DB during analysis but NOT returned in the response. Only `classification` and `best_uci` are returned. Live `eval_cp` is returned during gameplay via `POST /api/game/{id}/move`.
+**Note on `GET /api/game/{id}` moves:** Per-move `eval_cp` and `eval_loss_cp` are stored in the DB during analysis but NOT returned in the response. Only `classification` and `best_uci` are returned. Live evals are returned during gameplay via `POST /api/game/{id}/move`; both come from the full-strength engine.
 
 ## Engine Strength Modes
 
@@ -73,42 +77,49 @@ Two modes depending on ELO value:
 | Range | Mode | Notes |
 |-------|------|-------|
 | <1320 | `Skill Level` 0–20 | Move randomization; approximate ELOs only |
-| 1320–3190 | `UCI_Elo` | Calibrated; directly enforced by Stockfish |
+| 1320–3190 | `UCI_Elo` | Stockfish-calibrated at longer time controls; plays somewhat weaker at our 0.1s/move |
 
 Skill Level mapping (`_SKILL_BY_ELO` in `engine.py`):
-- 800 → Skill 0, 1000 → Skill 3, 1150 → Skill 6, 1200 → Skill 6, 1300 → Skill 9
+- ≤1000 → Skill 0, ≤1100 → Skill 3, ≤1200 → Skill 6, ≤1300 → Skill 9 (UI options: 1000/1100/1200/1300)
 
 **Important**: Skill Level evaluates at full strength then randomly degrades — inconsistent, not human-like. UCI_Elo is calibrated and consistent.
 
-Two engine instances run at all times:
-- `_engine_instance` — game engine, configures to selected ELO
-- `_hint_engine` — always full-strength (`full_strength=True`), used for hint and best-reply endpoints
+Two `EngineSlot`s in `main.py` (each lock-guarded, lazily started, restarted once on crash):
+- `_game_engine` (via `run_game_engine(elo, fn)`) — strength-limited, ONLY chooses the engine's moves
+- `_hint_engine` (via `run_hint_engine(fn)`) — full strength; every eval/best move shown to the player
 
 ## Key Dependencies
 
-- `python-chess` — board logic, FEN/PGN, move validation, UCI engine protocol
-- Stockfish binary — auto-detected via `shutil.which("stockfish")`; falls back to `STOCKFISH_PATH` env var, then bare `"stockfish"` (fails clearly if not installed)
+- `chess` (python-chess) — board logic, FEN/PGN, move validation, UCI engine protocol
+- Stockfish binary — `STOCKFISH_PATH` env var if set, else `shutil.which("stockfish")`, else bare `"stockfish"` (fails clearly if not installed)
 - `react-chessboard` v5 — interactive board component (uses `options={{...}}` prop, not flat props)
 - `chess.js` — client-side FEN reconstruction for move replay in Review and Learn pages
 
 ## Eval Convention
 
-Centipawns from White's perspective (positive = good for White).
-Play page converts to player's POV for display.
+Centipawns from White's perspective (positive = good for White). Mate = ±10000 (minus distance to mate).
+Play page converts to player's POV for display. The Play eval panel shows the eval of the position on the
+board (`engine_eval_cp`); the "Last move" delta compares evals immediately before/after *your* move only.
 
 ## Move Classification Thresholds
 
-| Classification | Eval loss |
+Classification uses **win-percentage points lost** (Lichess model:
+`win% = 50 + 50·(2/(1+e^(−0.00368208·cp)) − 1)`), so the same cp swing matters less in decided positions.
+Playing the engine's own top move is always `best`. Same thresholds live in `game_utils.py` and `frontend/src/classify.ts`.
+
+| Classification | Win% lost |
 |----------------|-----------|
-| Best | <= 0 cp (engine's top choice or better) |
-| Good | < 50 cp loss |
-| Inaccuracy | 50–99 cp loss |
-| Mistake | 100–199 cp loss |
-| Blunder | >= 200 cp loss |
+| Best | engine's top move, or <= 0 |
+| Good | < 5 |
+| Inaccuracy | 5–10 |
+| Mistake | 10–15 |
+| Blunder | >= 15 |
+
+**Accuracy** (Home stats, games list, Review) = mean per-move score: best 100, good 85, inaccuracy 60, mistake 30, blunder 0 (`ACCURACY_WEIGHTS` in `game_utils.py`).
 
 ## Assisted Tracking
 
-Games record `assisted = 1` when the player uses the **Show Best** hint button while the game is active (not after game over). The **Best reply?** button (shows engine's best response to your last move) does NOT count as assisted.
+Games record `assisted = 1` when the player uses the **Show Best Next** hint button or **Take Back** while the game is active (not after game over). The after-the-fact buttons (**Show Best Last**, **Eval Last Move**, **Show Best Last Reply**, auto-eval highlights) do NOT count as assisted.
 
 ## DB Schema
 
@@ -132,9 +143,10 @@ moves
   san           TEXT        -- e.g. "e4"
   classification TEXT       -- best | good | inaccuracy | mistake | blunder
   eval_cp       FLOAT       -- centipawn evaluation after this move (white's POV, nullable)
-  eval_loss_cp  FLOAT       -- centipawns lost vs the best move (nullable, populated during analysis)
-                            -- NOTE: column added to ORM but NO migration; existing DBs will not have this until recreated
+  eval_loss_cp  FLOAT       -- raw centipawns lost vs the best move, 0–2000 (nullable, populated during analysis;
+                            -- added to old DBs by init_db() migration). Classification uses win%, not this.
   best_uci       TEXT       -- Stockfish's best move UCI string at that position (populated during analysis, nullable)
+  UNIQUE INDEX ux_moves_game_ply (game_id, ply)
 ```
 
 ## Testing
