@@ -276,8 +276,22 @@ def list_games(db: Session = Depends(get_db)):
         .limit(50)
         .all()
     )
+    # Player's own move classifications per analyzed game, in one query.
+    analyzed_ids = [g.id for g, _ in rows_raw if g.analyzed]
+    player_classes: dict[int, list[str | None]] = {gid: [] for gid in analyzed_ids}
+    color_by_id = {g.id: g.player_color for g, _ in rows_raw}
+    if analyzed_ids:
+        for gid, ply, classification in (
+            db.query(Move.game_id, Move.ply, Move.classification)
+            .filter(Move.game_id.in_(analyzed_ids))
+            .all()
+        ):
+            if (ply % 2 == 1) == (color_by_id[gid] == "white"):
+                player_classes[gid].append(classification)
+
     rows = []
     for g, move_count in rows_raw:
+        summary = accuracy_summary(player_classes[g.id]) if g.id in player_classes else None
         rows.append({
             "game_id": g.id,
             "result": g.result,
@@ -287,6 +301,7 @@ def list_games(db: Session = Depends(get_db)):
             "analyzed": bool(g.analyzed),
             "assisted": bool(g.assisted),
             "move_count": move_count,
+            "accuracy": summary["pct"] if summary else None,
         })
     return rows
 

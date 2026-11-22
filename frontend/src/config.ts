@@ -1,5 +1,8 @@
 // ── API base URL ──────────────────────────────────────────────────────────
-export const API = "http://localhost:8000";
+// Same-origin by default: in dev, Vite proxies /api to the backend (see
+// vite.config.ts); in production, nginx proxies /api to uvicorn.
+// Override with VITE_API_BASE if the backend lives elsewhere.
+export const API: string = import.meta.env.VITE_API_BASE ?? "";
 
 // ── UI timing constants (milliseconds) ────────────────────────────────────
 

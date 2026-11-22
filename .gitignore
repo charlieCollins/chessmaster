@@ -8,5 +8,7 @@ dist/
 build/
 .env
 chess.db
+chess.db-wal
+chess.db-shm
 frontend/dist/
 .chess.pids

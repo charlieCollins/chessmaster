@@ -13,20 +13,17 @@ const COLORS: Record<string, string> = {
   blunder:     "var(--blunder)",
 };
 
+// Thresholds are win-percentage points lost (see backend/game_utils.py)
 const LEGEND = [
-  { key: "best",       label: "Best",       desc: "0 cp — engine's top choice" },
-  { key: "good",       label: "Good",       desc: "1–49 cp loss" },
-  { key: "inaccuracy", label: "Inaccuracy", desc: "50–99 cp loss" },
-  { key: "mistake",    label: "Mistake",    desc: "100–199 cp loss" },
-  { key: "blunder",    label: "Blunder",    desc: "≥200 cp loss" },
+  { key: "best",       label: "Best",       desc: "Engine's top choice (or no loss)" },
+  { key: "good",       label: "Good",       desc: "< 5% win chance lost" },
+  { key: "inaccuracy", label: "Inaccuracy", desc: "5–10% win chance lost" },
+  { key: "mistake",    label: "Mistake",    desc: "10–15% win chance lost" },
+  { key: "blunder",    label: "Blunder",    desc: "≥ 15% win chance lost" },
 ];
 
 const GLYPH: Record<string, string> = {
   best: "★", inaccuracy: "?!", mistake: "?", blunder: "??",
-};
-
-const ACCURACY_SCORE: Record<string, number> = {
-  best: 100, good: 85, inaccuracy: 60, mistake: 30, blunder: 0,
 };
 
 function grade(pct: number): { label: string; color: string } {
@@ -54,22 +51,44 @@ function estimateElo(pct: number): number {
   return pct >= 100 ? 2200 : 400;
 }
 
-function computeAccuracy(moves: MoveRecord[], color: string) {
-  const mine = moves.filter(m => {
-    const isWhite = m.ply % 2 === 1;
-    return color === "white" ? isWhite : !isWhite;
-  }).filter(m => m.classification !== null);
+/** Per-side accuracy computed by the backend (same definition as Home stats). */
+interface AccuracySummary {
+  pct: number;
+  counts: Record<string, number>;
+  n: number;
+}
 
-  if (mine.length === 0) return null;
-
-  const counts: Record<string, number> = {};
-  let total = 0;
-  for (const m of mine) {
-    const c = m.classification!;
-    counts[c] = (counts[c] ?? 0) + 1;
-    total += ACCURACY_SCORE[c] ?? 50;
-  }
-  return { pct: Math.round(total / mine.length), counts, n: mine.length };
+function RatingCol({ label, sublabel, acc, isYou }: {
+  label: string; sublabel?: string; acc: AccuracySummary; isYou?: boolean;
+}) {
+  const pct = Math.round(acc.pct);
+  const { label: gradeLabel, color } = grade(pct);
+  const perfElo = estimateElo(pct);
+  return (
+    <div style={{ flex: 1, minWidth: 160, padding: "12px 16px", background: isYou ? "rgba(201,168,76,0.05)" : undefined, borderRadius: "var(--radius)" }}>
+      <div style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: isYou ? "var(--gold)" : "var(--text-dim)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>
+        {label}{sublabel && <span style={{ color: "var(--text-dim)", marginLeft: 6 }}>{sublabel}</span>}
+      </div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 4 }}>
+        <span style={{ fontFamily: "var(--font-display)", fontSize: 32, color, lineHeight: 1 }}>{pct}%</span>
+        <span style={{ fontFamily: "var(--font-display)", fontSize: 24, color: "var(--gold)", lineHeight: 1 }} title="Rough estimate from accuracy, not a rating">~{perfElo}</span>
+      </div>
+      <div style={{ fontSize: 12, color, fontWeight: 600, marginBottom: 6 }}>{gradeLabel}</div>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        {(["best","good","inaccuracy","mistake","blunder"] as const).map(k => {
+          const c = acc.counts[k] ?? 0;
+          if (c === 0) return null;
+          return (
+            <span key={k} style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>
+              <span style={{ color: COLORS[k], fontWeight: 600 }}>{c}</span>
+              <span style={{ color: "var(--text-dim)" }}> {k}</span>
+            </span>
+          );
+        })}
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-dim)" }}>({acc.n})</span>
+      </div>
+    </div>
+  );
 }
 
 interface MoveRecord {
@@ -86,6 +105,7 @@ interface GameData {
   player_color: string;
   engine_elo: number;
   analyzed: boolean;
+  accuracy: { white: AccuracySummary | null; black: AccuracySummary | null } | null;
   moves: MoveRecord[];
 }
 
@@ -260,19 +280,19 @@ export default function Review({ gameId }: ReviewProps) {
       setGame(await updated.json());
     } catch (err) {
       console.error(err);
-      if (!isMountedRef.current) return;
-      setAnalyzeError(err instanceof Error ? err.message : String(err));
+      if (isMountedRef.current) setAnalyzeError(err instanceof Error ? err.message : String(err));
     } finally {
       if (progressInterval.current) { clearInterval(progressInterval.current); progressInterval.current = null; }
-      if (!isMountedRef.current) return;
-      setAnalyzeProgress(1);
-      // FIX M6 — store the end timer in a ref so it can be cancelled on unmount
-      if (analysisEndTimerRef.current) clearTimeout(analysisEndTimerRef.current);
-      analysisEndTimerRef.current = setTimeout(() => {
-        if (!isMountedRef.current) return;
-        setAnalyzing(false);
-        setAnalyzeProgress(0);
-      }, 400);
+      if (isMountedRef.current) {
+        setAnalyzeProgress(1);
+        // Store the end timer in a ref so it can be cancelled on unmount
+        if (analysisEndTimerRef.current) clearTimeout(analysisEndTimerRef.current);
+        analysisEndTimerRef.current = setTimeout(() => {
+          if (!isMountedRef.current) return;
+          setAnalyzing(false);
+          setAnalyzeProgress(0);
+        }, 400);
+      }
     }
   }
 
@@ -294,8 +314,8 @@ export default function Review({ gameId }: ReviewProps) {
   const currentMove = currentPly > 0 ? game.moves[currentPly - 1] : null;
   const YOU = game.player_color as "white" | "black";
   const OPP = YOU === "white" ? "black" : "white";
-  const accuracy    = game.analyzed ? computeAccuracy(game.moves, YOU) : null;
-  const oppAccuracy = game.analyzed ? computeAccuracy(game.moves, OPP) : null;
+  const accuracy    = game.accuracy?.[YOU] ?? null;
+  const oppAccuracy = game.accuracy?.[OPP] ?? null;
   const YOUR_TINT = "rgba(201, 168, 76, 0.06)";
 
   // group into pairs
@@ -347,41 +367,6 @@ export default function Review({ gameId }: ReviewProps) {
       {accuracy && oppAccuracy && (() => {
         const overallPct = Math.round((accuracy.pct + oppAccuracy.pct) / 2);
         const { label: overallLabel, color: overallColor } = grade(overallPct);
-
-        function RatingCol({ label, sublabel, acc, isYou }: {
-          label: string; sublabel?: string;
-          acc: { pct: number; counts: Record<string,number>; n: number };
-          isYou?: boolean;
-        }) {
-          const { pct, counts, n } = acc;
-          const { label: gradeLabel, color } = grade(pct);
-          const perfElo = estimateElo(pct);
-          return (
-            <div style={{ flex: 1, minWidth: 160, padding: "12px 16px", background: isYou ? "rgba(201,168,76,0.05)" : undefined, borderRadius: "var(--radius)" }}>
-              <div style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: isYou ? "var(--gold)" : "var(--text-dim)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>
-                {label}{sublabel && <span style={{ color: "var(--text-dim)", marginLeft: 6 }}>{sublabel}</span>}
-              </div>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 4 }}>
-                <span style={{ fontFamily: "var(--font-display)", fontSize: 32, color, lineHeight: 1 }}>{pct}%</span>
-                <span style={{ fontFamily: "var(--font-display)", fontSize: 24, color: "var(--gold)", lineHeight: 1 }}>~{perfElo}</span>
-              </div>
-              <div style={{ fontSize: 12, color, fontWeight: 600, marginBottom: 6 }}>{gradeLabel}</div>
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                {(["best","good","inaccuracy","mistake","blunder"] as const).map(k => {
-                  const c = counts[k] ?? 0;
-                  if (c === 0) return null;
-                  return (
-                    <span key={k} style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>
-                      <span style={{ color: COLORS[k], fontWeight: 600 }}>{c}</span>
-                      <span style={{ color: "var(--text-dim)" }}> {k}</span>
-                    </span>
-                  );
-                })}
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-dim)" }}>({n})</span>
-              </div>
-            </div>
-          );
-        }
 
         return (
           <div style={{

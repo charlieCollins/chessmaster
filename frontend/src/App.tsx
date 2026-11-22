@@ -62,7 +62,7 @@ export default function App() {
 
   function navigate(newPage: Page) {
     if (gameActive && newPage !== "play") {
-      if (!window.confirm("You have a game in progress. Leave anyway? The game will be saved but you'll lose the board state.")) return;
+      if (!window.confirm("You have a game in progress. Leave anyway? In-progress games can't be resumed and won't appear in your history.")) return;
     }
     setPage(newPage);
     if (newPage !== "play") setGameActive(false);

@@ -41,7 +41,10 @@ git config --global --add safe.directory "$APP_DIR" 2>/dev/null || true
 # 4. Install Python dependencies
 # -------------------------------------------------------
 echo "Installing Python dependencies..."
-uv sync
+if [ ! -d "$APP_DIR/.venv" ]; then
+    uv venv "$APP_DIR/.venv"
+fi
+uv pip install --python "$APP_DIR/.venv" -r requirements.txt
 
 # -------------------------------------------------------
 # 5. Build React frontend
@@ -59,7 +62,7 @@ mkdir -p "$APP_DIR/data"
 
 if [ ! -f "$APP_DIR/data/chess.db" ]; then
     echo "Initializing database..."
-    DATABASE_URL="sqlite:////opt/chess/data/chess.db" uv run python -c "
+    DATABASE_URL="sqlite:////opt/chess/data/chess.db" "$APP_DIR/.venv/bin/python" -c "
 from backend.db import init_db
 init_db()
 "

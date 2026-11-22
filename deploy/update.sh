@@ -7,7 +7,10 @@ APP_DIR="/opt/chess"
 cd "$APP_DIR"
 
 git pull
-uv sync
+if [ ! -d "$APP_DIR/.venv" ]; then
+    uv venv "$APP_DIR/.venv"
+fi
+uv pip install --python "$APP_DIR/.venv" -r requirements.txt
 
 cd frontend && npm install && npm run build && cd ..
 

@@ -194,3 +194,9 @@ def test_delete_removes_game_and_moves():
     assert client.delete(f"/api/game/{game_id}").status_code == 200
     assert client.get(f"/api/game/{game_id}").status_code == 404
     assert _move_count(game_id) == 0
+
+
+def test_games_list_includes_player_accuracy():
+    game_id = _analyzed_game_with(["best", "good", "mistake", "blunder"])  # player = white
+    row = next(r for r in client.get("/api/games").json() if r["game_id"] == game_id)
+    assert row["accuracy"] == 65.0

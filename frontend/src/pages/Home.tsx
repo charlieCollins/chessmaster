@@ -11,6 +11,7 @@ interface GameRow {
   analyzed: boolean;
   assisted: boolean;
   move_count: number;
+  accuracy: number | null;
 }
 
 interface Stats {
@@ -217,7 +218,7 @@ export default function Home({ onPlay, onReview }: HomeProps) {
                     <td className="mono">{row.engine_elo}</td>
                     <td style={{ color: outcomeColor, fontWeight: 600 }}>{outcome}</td>
                     <td className="mono dim">{Math.ceil(row.move_count / 2)}</td>
-                    <td className="mono dim" style={{ fontSize: 12 }}>—</td>
+                    <td className="mono dim" style={{ fontSize: 12 }}>{row.accuracy !== null ? `${Math.round(row.accuracy)}%` : "—"}</td>
                     <td className="dim mono" style={{ fontSize: 12 }}>
                       {row.analyzed ? "✓" : "—"}
                     </td>

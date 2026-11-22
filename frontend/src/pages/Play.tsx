@@ -1,19 +1,10 @@
 // frontend/src/pages/Play.tsx
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Chessboard } from "react-chessboard";
 import { Chess, type Square } from "chess.js";
 import { API, HINT_DISPLAY_MS, REPLY_DISPLAY_MS, EVAL_DISPLAY_MS, ENGINE_MOVE_MIN_MS } from "../config";
 import { useBoardTheme } from "../themes";
-
-type Quality = "best" | "good" | "inaccuracy" | "mistake" | "blunder";
-
-const QUALITY_RGB: Record<Quality, [number,number,number]> = {
-  best:       [72,  200, 120],
-  good:       [56,  142, 255],
-  inaccuracy: [255, 140,  60],
-  mistake:    [255, 190,  60],
-  blunder:    [220,  60,  60],
-};
+import { type Quality, QUALITIES, classifyMove, qualityTint } from "../classify";
 
 /** Returns every square on the path from→to (inclusive). For knights/pawns/kings
  *  there are no intermediates, so just [from, to] is returned. */
@@ -32,13 +23,12 @@ function squaresOnPath(from: string, to: string): string[] {
 }
 
 function qualitySquares(from: string, to: string, quality: Quality) {
-  const [r,g,b] = QUALITY_RGB[quality];
   const result: Record<string, React.CSSProperties> = {};
   for (const sq of squaresOnPath(from, to)) {
     if (sq === from || sq === to) {
-      result[sq] = { backgroundColor: `rgba(${r},${g},${b},0.65)`, boxShadow: `inset 0 0 0 3px rgba(${r},${g},${b},0.90)` };
+      result[sq] = { backgroundColor: qualityTint(quality, 65), boxShadow: `inset 0 0 0 3px ${qualityTint(quality, 90)}` };
     } else {
-      result[sq] = { backgroundColor: `rgba(${r},${g},${b},0.28)` };
+      result[sq] = { backgroundColor: qualityTint(quality, 28) };
     }
   }
   return result;
@@ -57,8 +47,10 @@ interface GameState {
   gameOver: boolean;
   result: string | null;
   termination: string | null;
+  /** Full-strength eval (White POV) of the position currently on the board. */
   evalCp: number | null;
-  lastMoveDelta: number | null;
+  /** White-POV evals immediately before/after the player's last move. */
+  lastMoveEvals: { before: number; after: number } | null;
   assisted: boolean;
 }
 
@@ -87,11 +79,15 @@ function engineModeTag(elo: number): string {
 }
 
 // Responsive board size: reserves space for left (160px) + right (175px) sidebars + gaps + app padding
+const MIN_BOARD = 280;
+function computeBoardSize(max: number): number {
+  return Math.max(MIN_BOARD, Math.min(max, window.innerWidth - 48 - 160 - 175 - 40));
+}
+
 function useBoardSize(max: number = 540): number {
-  const compute = () => Math.min(max, window.innerWidth - 48 - 160 - 175 - 40);
-  const [size, setSize] = useState(compute);
+  const [size, setSize] = useState(() => computeBoardSize(max));
   useEffect(() => {
-    const handler = () => setSize(compute());
+    const handler = () => setSize(computeBoardSize(max));
     window.addEventListener("resize", handler);
     return () => window.removeEventListener("resize", handler);
   }, [max]);
@@ -178,9 +174,10 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
     return () => window.removeEventListener('beforeunload', handler);
   }, [state]);
 
+  const gameActive = state !== null && !state.gameOver;
   useEffect(() => {
-    onGameActive?.(state !== null && !state.gameOver);
-  }, [state]);
+    onGameActive?.(gameActive);
+  }, [gameActive, onGameActive]);
 
   // FIX 6: error handling in startGame
   async function startGame() {
@@ -203,7 +200,7 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
         result: null,
         termination: null,
         evalCp: null,
-        lastMoveDelta: null,
+        lastMoveEvals: null,
         assisted: false,
       });
     } catch {
@@ -213,64 +210,50 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
     }
   }
 
-  const onDrop = useCallback(
-    ({ piece, sourceSquare, targetSquare }: {
-      piece: { isSparePiece: boolean; position: string; pieceType: string };
-      sourceSquare: string;
-      targetSquare: string | null;
-    }): boolean => {
-      // FIX 3: board drop only blocked by `loading`, not `hintLoading`
-      if (!state || state.gameOver || loading || !targetSquare) return false;
-      const isPawn = piece.pieceType.endsWith("P");
-      const isPromotion =
-        isPawn &&
-        ((piece.pieceType.startsWith("w") && targetSquare[1] === "8") ||
-          (piece.pieceType.startsWith("b") && targetSquare[1] === "1"));
-      // FIX 8: open promotion dialog instead of auto-queening
-      if (isPromotion) {
-        // FIX L1: no san field
-        setPendingPromotion({ from: sourceSquare, to: targetSquare });
-        return true;
-      }
-      makeMove(sourceSquare + targetSquare);
+  /** True if from→to is a legal pawn promotion in the current position. */
+  function isLegalPromotion(from: string, to: string): boolean {
+    if (!state) return false;
+    return new Chess(state.fen)
+      .moves({ square: from as Square, verbose: true })
+      .some((m) => m.to === to && m.promotion);
+  }
+
+  function onDrop({ sourceSquare, targetSquare }: {
+    piece: { isSparePiece: boolean; position: string; pieceType: string };
+    sourceSquare: string;
+    targetSquare: string | null;
+  }): boolean {
+    // Board input is blocked while the engine is replying
+    if (!state || state.gameOver || loading || !targetSquare) return false;
+    if (isLegalPromotion(sourceSquare, targetSquare)) {
+      setPendingPromotion({ from: sourceSquare, to: targetSquare });
       return true;
-    },
-    [state, loading]
-  );
+    }
+    makeMove(sourceSquare + targetSquare);
+    return true;
+  }
 
-  const onSquareClick = useCallback(
-    ({ square, piece }: { square: string; piece?: { pieceType: string } | null }) => {
-      // FIX 3: click only blocked by `loading`, not `hintLoading`
-      if (!state || state.gameOver || loading) return;
-      if (selectedSquare) {
-        const chess = new Chess(state.fen);
-        // FIX H2: use Square type instead of `any`
-        const movingPiece = chess.get(selectedSquare as Square);
-        const isPromotion =
-          movingPiece?.type === "p" &&
-          ((movingPiece.color === "w" && square[1] === "8") ||
-            (movingPiece.color === "b" && square[1] === "1"));
-        setSelectedSquare(null);
-        // FIX 8: open promotion dialog instead of auto-queening; FIX L1: no san field
-        if (isPromotion) {
-          setPendingPromotion({ from: selectedSquare, to: square });
-          return;
-        }
-        makeMove(selectedSquare + square);
-      } else if (piece) {
-        const isPlayerPiece =
-          (state.playerColor === "white" && piece.pieceType.startsWith("w")) ||
-          (state.playerColor === "black" && piece.pieceType.startsWith("b"));
-        // FIX H2: cast to Square since we confirmed piece exists on this square
-        if (isPlayerPiece) setSelectedSquare(square as Square);
+  function onSquareClick({ square, piece }: { square: string; piece?: { pieceType: string } | null }) {
+    if (!state || state.gameOver || loading) return;
+    if (selectedSquare) {
+      setSelectedSquare(null);
+      if (isLegalPromotion(selectedSquare, square)) {
+        setPendingPromotion({ from: selectedSquare, to: square });
+        return;
       }
-    },
-    [state, loading, selectedSquare]
-  );
+      makeMove(selectedSquare + square);
+    } else if (piece) {
+      const isPlayerPiece =
+        (state.playerColor === "white" && piece.pieceType.startsWith("w")) ||
+        (state.playerColor === "black" && piece.pieceType.startsWith("b"));
+      if (isPlayerPiece) setSelectedSquare(square as Square);
+    }
+  }
 
-  // FIX 3: use hintLoading instead of loading for hint fetch; also guard on gameOver
+  // Disabled while the engine is replying: the server-side position would be
+  // ahead of the board, so the hint would be for a position not yet shown.
   async function requestHint() {
-    if (!state || hintLoading || state.gameOver) return;
+    if (!state || hintLoading || loading || state.gameOver) return;
     setHintError(false);
     setHintLoading(true);
     try {
@@ -307,19 +290,13 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
         const data = await res.json();
         // FIX L7: include promotion in engineUci for full comparison
         const engineUci = data.from_sq + data.to_sq + (data.promotion ?? "");
-        const from = lastPlayerUci!.slice(0, 2);
-        const to   = lastPlayerUci!.slice(2, 4);
-        let quality: Quality;
-        if (engineUci === lastPlayerUci) {
-          quality = "best";
-        } else {
-          const loss = -(state!.lastMoveDelta ?? 0); // cp lost (positive = bad)
-          if (loss < 50)        quality = "good";
-          else if (loss < 100)  quality = "inaccuracy";
-          else if (loss < 200)  quality = "mistake";
-          else                  quality = "blunder";
-        }
-        setLastMoveHighlight({ from, to, quality });
+        const evals = state?.lastMoveEvals ?? null;
+        const quality = classifyMove(
+          lastPlayerUci!, engineUci, evals?.before ?? null, evals?.after ?? null,
+          state?.playerColor === "white",
+        );
+        if (quality === null) { setPrevBestError(true); return; }
+        setLastMoveHighlight({ from: lastPlayerUci!.slice(0, 2), to: lastPlayerUci!.slice(2, 4), quality });
         if (evalTimerRef.current) clearTimeout(evalTimerRef.current);
         evalTimerRef.current = setTimeout(() => setLastMoveHighlight(null), EVAL_DISPLAY_MS);
       } else {
@@ -411,7 +388,10 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
     setReplyFen(fenAfterPlayerMove);
     setState((s) => s ? { ...s, fen: chess.fen() } : s);
 
+    // Eval of the position on the board right before this move (from the
+    // previous response's engine_eval_cp), so the delta is this move alone.
     const evalBeforeMove = state.evalCp;
+    const playerIsWhite = state.playerColor === "white";
     setLoading(true);
     const moveStart = Date.now();
     try {
@@ -429,13 +409,13 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
       }
       const data = await res.json();
 
-      const newEval: number | null = data.eval_cp ?? null;
-      let lastMoveDelta: number | null = null;
-      if (evalBeforeMove !== null && newEval !== null) {
-        lastMoveDelta = state.playerColor === "white"
-          ? newEval - evalBeforeMove
-          : evalBeforeMove - newEval;
-      }
+      // eval_cp: after my move (before the reply); engine_eval_cp: after the reply,
+      // i.e. the position the board will show. Both are full-strength, White POV.
+      const evalAfterMove: number | null = data.eval_cp ?? null;
+      const evalAfterReply: number | null = data.engine_eval_cp ?? null;
+      const lastMoveEvals = evalBeforeMove !== null && evalAfterMove !== null
+        ? { before: evalBeforeMove, after: evalAfterMove }
+        : null;
 
       // Start both auto-eval fetches immediately (run while engine delay ticks)
       const autoPlayerPromise = (autoEvalRef.current && !data.game_over)
@@ -459,13 +439,7 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
         if (res?.ok) {
           const evalData = await res.json();
           const bestUci = evalData.from_sq + evalData.to_sq + (evalData.promotion ?? "");
-          let quality: Quality | null = null;
-          if (bestUci === uci) {
-            quality = "best";
-          } else if (lastMoveDelta !== null) {
-            const loss = -lastMoveDelta;
-            quality = loss < 50 ? "good" : loss < 100 ? "inaccuracy" : loss < 200 ? "mistake" : "blunder";
-          }
+          const quality = classifyMove(uci, bestUci, evalBeforeMove, evalAfterMove, playerIsWhite);
           if (quality !== null) {
             setLastMoveHighlight({ from: uci.slice(0, 2), to: uci.slice(2, 4), quality });
             if (evalTimerRef.current) clearTimeout(evalTimerRef.current);
@@ -488,26 +462,21 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
 
       setMoveError(null); // FIX 4: clear error on success
       setState((s) =>
-        s ? { ...s, fen: data.fen, evalCp: newEval, lastMoveDelta, gameOver: data.game_over, result: data.result ?? null, termination: data.termination ?? null } : s
+        s ? {
+          ...s, fen: data.fen,
+          evalCp: data.engine_move ? evalAfterReply : evalAfterMove,
+          lastMoveEvals, gameOver: data.game_over, result: data.result ?? null, termination: data.termination ?? null,
+        } : s
       );
 
       // Engine move highlight — shown after engine move appears on board
       if (autoEnginePromise) {
         const res = await autoEnginePromise;
-        if (res?.ok && data.engine_move && data.eval_cp != null && data.engine_eval_cp != null) {
+        if (res?.ok && data.engine_move) {
           const evalData = await res.json();
           const bestUci = evalData.from_sq + evalData.to_sq + (evalData.promotion ?? "");
-          const engineIsWhite = state.playerColor === "black";
-          const engineDelta = engineIsWhite
-            ? (data.engine_eval_cp - data.eval_cp)
-            : (data.eval_cp - data.engine_eval_cp);
-          const loss = -engineDelta;
-          const quality: Quality =
-            bestUci === data.engine_move ? "best"
-            : loss < 50                  ? "good"
-            : loss < 100                 ? "inaccuracy"
-            : loss < 200                 ? "mistake"
-                                         : "blunder";
+          const quality = classifyMove(data.engine_move, bestUci, evalAfterMove, evalAfterReply, !playerIsWhite);
+          if (quality === null) return;
           setEngineMoveHighlight({ from: data.engine_move.slice(0, 2), to: data.engine_move.slice(2, 4), quality });
           if (engineMoveTimerRef.current) clearTimeout(engineMoveTimerRef.current);
           engineMoveTimerRef.current = setTimeout(() => setEngineMoveHighlight(null), EVAL_DISPLAY_MS);
@@ -559,7 +528,7 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
       const res = await fetch(`${API}/api/game/${state.gameId}/takeback`, { method: "POST" });
       if (!res.ok) throw new Error();
       const data = await res.json();
-      setState(s => s ? { ...s, fen: data.fen, evalCp: null, lastMoveDelta: null, assisted: true } : s);
+      setState(s => s ? { ...s, fen: data.fen, evalCp: null, lastMoveEvals: null, assisted: true } : s);
       setPrevFen(null);
       setLastPlayerUci(null);
       setReplyFen(null);
@@ -576,11 +545,6 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
 
   function fmt(cp: number) {
     return cp > 0 ? `+${(cp / 100).toFixed(2)}` : (cp / 100).toFixed(2);
-  }
-
-  // FIX UX-L4: format move for display — keep full UCI with promotion shown
-  function formatMove(from: string, to: string, promotion?: string): string {
-    return `${from}→${to}${promotion ? `=${promotion.toUpperCase()}` : ""}`;
   }
 
   const colStyle: React.CSSProperties = {
@@ -659,7 +623,7 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
                 <option key={o.value} value={o.value}>{o.label} — Skill {o.skill}/20</option>
               ))}
             </optgroup>
-            <optgroup label="UCI ELO (calibrated)">
+            <optgroup label="UCI ELO (Stockfish)">
               {ELO_OPTIONS.filter(o => o.mode === "uci").map(o => (
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
@@ -671,7 +635,7 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
               <div style={{ ...labelStyle, marginBottom: 0, letterSpacing: "0.04em" }}>
                 {opt?.mode === "skill"
                   ? `Skill ${opt.skill}/20 · randomized, not calibrated`
-                  : "calibrated · directly enforced by Stockfish"}
+                  : "Stockfish UCI_Elo · rating is approximate at fast move times"}
               </div>
             );
           })()}
@@ -691,8 +655,11 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
   }
 
   // ── Active game ──────────────────────────────────────────
-  const evalPos = state.evalCp !== null
-    ? (state.playerColor === "white" ? state.evalCp : -state.evalCp)
+  // Player-POV values: positive = good for you, regardless of color
+  const pov = state.playerColor === "white" ? 1 : -1;
+  const evalPos = state.evalCp !== null ? pov * state.evalCp : null;
+  const lastMoveDelta = state.lastMoveEvals
+    ? pov * (state.lastMoveEvals.after - state.lastMoveEvals.before)
     : null;
 
   return (
@@ -735,15 +702,15 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
               );
             })()}
             <div style={{ fontSize: 11, color: "var(--text-dim)", fontFamily: "var(--font-mono)", marginTop: 4 }}>
-              {evalPos === 0 ? "equal" : evalPos > 0 ? "white advantage" : "black advantage"} (pawns)
+              {evalPos === 0 ? "equal" : evalPos > 0 ? "you're better" : "engine is better"} (pawns)
             </div>
-            {state.lastMoveDelta !== null && (() => {
-              const delta = state.lastMoveDelta!;
+            {lastMoveDelta !== null && (() => {
+              const delta = lastMoveDelta;
               return (
                 <>
                   <div style={{ ...labelStyle, marginTop: 10 }}>Last move</div>
                   <span style={{ color: delta > 0 ? "var(--good)" : delta < 0 ? "var(--loss)" : "var(--text-dim)", fontSize: 11, fontFamily: "var(--font-mono)" }}>
-                    {delta > 0 ? "▲" : delta < 0 ? "▼" : "="} {Math.abs(delta / 100).toFixed(2)} {delta > 0 ? "pawn gain" : "pawn loss"}
+                    {delta > 0 ? "▲" : delta < 0 ? "▼" : "="} {Math.abs(delta / 100).toFixed(2)} {delta > 0 ? "pawn gain" : delta < 0 ? "pawn loss" : "pawns"}
                   </span>
                 </>
               );
@@ -834,7 +801,7 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
           </div>
 
           <div>
-            <button style={{ width: "100%" }} onClick={requestHint} disabled={hintLoading || state.gameOver} title="Full-strength Stockfish best next move (marks game as assisted)">
+            <button style={{ width: "100%" }} onClick={requestHint} disabled={hintLoading || loading || state.gameOver} title="Full-strength Stockfish best next move (marks game as assisted)">
               {hintLoading ? "Thinking…" : "Show Best Next"}
             </button>
             {hintError && <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--loss)", marginTop: 4 }}>unavailable</div>}
@@ -868,16 +835,10 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
 
         {/* Legend */}
         <div style={{ display: "flex", flexDirection: "column", gap: 3, borderTop: "1px solid var(--border)", paddingTop: 8 }}>
-          {([
-            { label: "Best",       rgb: "72,200,120" },
-            { label: "Good",       rgb: "56,142,255" },
-            { label: "Inaccuracy", rgb: "255,140,60"  },
-            { label: "Mistake",    rgb: "255,190,60"  },
-            { label: "Blunder",    rgb: "220,60,60"   },
-          ] as const).map(({ label, rgb }) => (
-            <div key={label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <div style={{ width: 10, height: 10, borderRadius: 2, flexShrink: 0, background: `rgba(${rgb},0.75)`, boxShadow: `0 0 0 1.5px rgba(${rgb},0.9)` }} />
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-dim)", letterSpacing: "0.04em" }}>{label}</span>
+          {QUALITIES.map((q) => (
+            <div key={q} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <div style={{ width: 10, height: 10, borderRadius: 2, flexShrink: 0, background: qualityTint(q, 75), boxShadow: `0 0 0 1.5px ${qualityTint(q, 90)}` }} />
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-dim)", letterSpacing: "0.04em", textTransform: "capitalize" }}>{q}</span>
             </div>
           ))}
         </div>
