@@ -3,7 +3,7 @@ import chess
 from sqlalchemy.orm import Session
 from .db import Move, Game
 from .engine import ChessEngine
-from .game_utils import classify_move
+from .game_utils import classify_move, mover_win_loss
 from .config import ANALYSIS_TIME
 
 
@@ -61,17 +61,18 @@ def analyze_game(game_id: int, db: Session) -> None:
             eval_after  = evals[i + 1]
 
             # Odd ply = White moved; even ply = Black moved.
-            # eval_loss is positive when the player made a worse move.
-            if move_record.ply % 2 == 1:   # White's move
-                eval_loss = eval_before - eval_after
-            else:                           # Black's move
-                eval_loss = eval_after - eval_before
+            mover_is_white = move_record.ply % 2 == 1
+            cp_loss = eval_before - eval_after if mover_is_white else eval_after - eval_before
 
-            eval_loss = max(0, min(eval_loss, 2000))  # cap between 0 and 2000cp
+            if move_record.uci == best_ucis[i]:
+                classification = "best"   # played the engine's choice; ignore eval noise
+            else:
+                classification = classify_move(mover_win_loss(eval_before, eval_after, mover_is_white))
+
             move_record.eval_cp         = eval_after
             move_record.best_uci        = best_ucis[i]
-            move_record.eval_loss_cp    = eval_loss
-            move_record.classification  = classify_move(eval_loss)
+            move_record.eval_loss_cp    = max(0, min(cp_loss, 2000))  # raw cp, kept for reference
+            move_record.classification  = classification
 
         game = db.get(Game, game_id)
         if game is None:

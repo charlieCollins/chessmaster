@@ -32,3 +32,16 @@ def test_evaluate_mate_returns_large_value(engine):
     score = engine.evaluate(fool)
     assert score is not None
     assert score < -5000  # white is mated, strongly negative from white's POV
+
+
+def test_evaluate_black_mated_is_positive_for_white(engine):
+    # 1.e4 f6 2.d4 g5 3.Qh5# — black is checkmated, so White's POV is winning
+    black_mated = "rnbqkbnr/ppppp2p/5p2/6pQ/3PP3/8/PPP2PPP/RNB1KBNR b KQkq - 1 3"
+    assert chess.Board(black_mated).is_checkmate()
+    assert engine.evaluate(black_mated) > 5000
+
+
+def test_evaluate_stalemate_is_zero(engine):
+    stalemate = "7k/5Q2/6K1/8/8/8/8/8 b - - 0 1"
+    assert chess.Board(stalemate).is_stalemate()
+    assert engine.evaluate(stalemate) == 0.0

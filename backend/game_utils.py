@@ -1,4 +1,7 @@
 # backend/game_utils.py
+import math
+from typing import Iterable
+
 import chess
 import chess.pgn
 from sqlalchemy.orm import Session
@@ -51,15 +54,48 @@ def generate_pgn(game_id: int, db: Session) -> str:
     return game_node.accept(exporter)
 
 
-def classify_move(eval_loss_cp: float) -> str:
-    """Classify a move based on centipawn loss vs best move."""
-    if eval_loss_cp <= 0:
+def win_percent(cp: float) -> float:
+    """White's winning chances (0–100) for a White-POV centipawn eval.
+
+    Same logistic model Lichess uses, so a 300cp swing matters a lot in an equal
+    position but very little when one side is already completely winning.
+    """
+    return 50 + 50 * (2 / (1 + math.exp(-0.00368208 * cp)) - 1)
+
+
+def mover_win_loss(eval_before: float, eval_after: float, mover_is_white: bool) -> float:
+    """Win-percentage points the moving side gave up (never negative)."""
+    before, after = win_percent(eval_before), win_percent(eval_after)
+    lost = before - after if mover_is_white else after - before
+    return max(0.0, lost)
+
+
+def classify_move(win_loss: float) -> str:
+    """Classify a move by win-percentage points lost (Lichess thresholds)."""
+    if win_loss <= 0:
         return "best"
-    elif eval_loss_cp < 50:
+    elif win_loss < 5:
         return "good"
-    elif eval_loss_cp < 100:
+    elif win_loss < 10:
         return "inaccuracy"
-    elif eval_loss_cp < 200:
+    elif win_loss < 15:
         return "mistake"
     else:
         return "blunder"
+
+
+# Per-move score used for "accuracy" everywhere (Home stats and Review panel).
+ACCURACY_WEIGHTS = {"best": 100, "good": 85, "inaccuracy": 60, "mistake": 30, "blunder": 0}
+
+
+def accuracy_summary(classifications: Iterable[str | None]) -> dict | None:
+    """{pct, counts, n} over classified moves, or None if none are classified."""
+    counts: dict[str, int] = {}
+    for c in classifications:
+        if c in ACCURACY_WEIGHTS:
+            counts[c] = counts.get(c, 0) + 1
+    n = sum(counts.values())
+    if n == 0:
+        return None
+    total = sum(ACCURACY_WEIGHTS[c] * k for c, k in counts.items())
+    return {"pct": round(total / n, 1), "counts": counts, "n": n}

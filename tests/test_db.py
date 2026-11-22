@@ -31,3 +31,17 @@ def test_move_model_linked_to_game():
         session.commit()
         assert move.id is not None
         assert move.game_id == game.id
+
+
+def test_duplicate_ply_in_same_game_is_rejected():
+    from sqlalchemy.exc import IntegrityError
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        game = Game(player_color="white", engine_elo=1500, result="*")
+        session.add(game)
+        session.commit()
+        session.add(Move(game_id=game.id, ply=1, uci="e2e4", san="e4"))
+        session.add(Move(game_id=game.id, ply=1, uci="d2d4", san="d4"))
+        with pytest.raises(IntegrityError):
+            session.commit()

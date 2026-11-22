@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from backend.db import Base, Game, Move
-from backend.game_utils import reconstruct_board, generate_pgn, classify_move
+from backend.game_utils import reconstruct_board, generate_pgn, classify_move, win_percent, mover_win_loss
 
 @pytest.fixture
 def db():
@@ -39,18 +39,40 @@ def test_reconstruct_board_empty_game(db):
     assert board.fen() == chess.STARTING_FEN
 
 def test_classify_move():
-    assert classify_move(250) == "blunder"
-    assert classify_move(200) == "blunder"
-    assert classify_move(199) == "mistake"
-    assert classify_move(100) == "mistake"
-    assert classify_move(99) == "inaccuracy"
-    assert classify_move(50) == "inaccuracy"
-    assert classify_move(49) == "good"
+    # Thresholds are in win-percentage points lost (Lichess-style), not centipawns
+    assert classify_move(30) == "blunder"
+    assert classify_move(15) == "blunder"
+    assert classify_move(14.9) == "mistake"
+    assert classify_move(10) == "mistake"
+    assert classify_move(9.9) == "inaccuracy"
+    assert classify_move(5) == "inaccuracy"
+    assert classify_move(4.9) == "good"
     assert classify_move(0) == "best"
-    assert classify_move(-10) == "best"   # actually gained eval
+    assert classify_move(-2) == "best"
 
 def test_generate_pgn(db):
     game = _make_game_with_moves(db)
     pgn = generate_pgn(game.id, db)
     assert "e4" in pgn
     assert "e5" in pgn
+
+
+def test_win_percent_is_symmetric_and_bounded():
+    assert win_percent(0) == 50
+    assert win_percent(300) + win_percent(-300) == pytest.approx(100)
+    assert win_percent(10000) > 99.9
+
+
+def test_mover_win_loss_uses_movers_perspective():
+    assert mover_win_loss(0, -300, mover_is_white=True) > 0    # white got worse
+    assert mover_win_loss(0, 300, mover_is_white=False) > 0    # black got worse
+    assert mover_win_loss(0, 300, mover_is_white=True) == 0    # gains are clamped to 0
+
+
+def test_same_cp_drop_matters_less_in_decided_positions():
+    # 300cp thrown away from equal is a blunder ...
+    assert classify_move(mover_win_loss(0, -300, mover_is_white=True)) == "blunder"
+    # ... but +9 -> +6 in a completely won game is not
+    assert classify_move(mover_win_loss(900, 600, mover_is_white=True)) != "blunder"
+    # Losing a forced mate while still a queen up is not a blunder either
+    assert classify_move(mover_win_loss(10000, 900, mover_is_white=True)) != "blunder"

@@ -1,6 +1,5 @@
 # backend/main.py
 from contextlib import asynccontextmanager
-import threading
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -10,43 +9,46 @@ from sqlalchemy.orm import Session
 import chess
 
 from .db import get_db, Game, Move, init_db
-from .engine import ChessEngine
-from .game_utils import reconstruct_board, generate_pgn
+from .engine import ChessEngine, EngineSlot
+from .game_utils import reconstruct_board, generate_pgn, accuracy_summary
 from .analysis import analyze_game
-from .config import CORS_ORIGINS, HINT_TIME, ENGINE_MOVE_TIME, DEFAULT_ENGINE_ELO
+from .config import CORS_ORIGINS, HINT_TIME, ENGINE_MOVE_TIME, LIVE_EVAL_TIME, DEFAULT_ENGINE_ELO
 
 
 # ── Engine lifecycle ──────────────────────────────────────────────────────────
-_engine_instance: ChessEngine | None = None
-_hint_engine: ChessEngine | None = None   # full-strength; separate from game engine
-_engine_lock = threading.Lock()
-_hint_lock = threading.Lock()
+# Game engine: strength-limited, only used to *choose* the engine's moves.
+# Hint engine: full strength, used for every eval/best-move shown to the player.
+_game_engine = EngineSlot(lambda: ChessEngine(elo=DEFAULT_ENGINE_ELO))
+_hint_engine = EngineSlot(lambda: ChessEngine(full_strength=True))
 
-def _get_engine(elo: int = DEFAULT_ENGINE_ELO) -> ChessEngine:
-    """Must be called while holding _engine_lock."""
-    global _engine_instance
-    if _engine_instance is None:
-        _engine_instance = ChessEngine(elo=elo)
-    else:
-        _engine_instance.set_elo(elo)
-    return _engine_instance
 
-def _get_hint_engine() -> ChessEngine:
-    """Must be called while holding _hint_lock."""
-    global _hint_engine
-    if _hint_engine is None:
-        _hint_engine = ChessEngine(full_strength=True)
-    return _hint_engine
+def run_game_engine(elo: int, fn):
+    """Run fn(engine) on the game engine configured to `elo`."""
+    def configured(eng: ChessEngine):
+        eng.set_elo(elo)
+        return fn(eng)
+    return _game_engine.run(configured)
+
+
+def run_hint_engine(fn):
+    """Run fn(engine) on the full-strength engine."""
+    return _hint_engine.run(fn)
+
+
+def _live_eval(fen: str) -> float | None:
+    """Full-strength eval for display; None (not an error) if the engine fails."""
+    try:
+        return run_hint_engine(lambda eng: eng.evaluate(fen, time_limit=LIVE_EVAL_TIME))
+    except Exception:
+        return None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
     yield
-    if _engine_instance:
-        _engine_instance.close()
-    if _hint_engine:
-        _hint_engine.close()
+    _game_engine.close()
+    _hint_engine.close()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -97,29 +99,31 @@ def _check_and_end_game(game: Game, board: chess.Board, game_id: int, db: Sessio
 # ── Routes ────────────────────────────────────────────────────────────────────
 @app.post("/api/game")
 def start_game(req: StartGameRequest, db: Session = Depends(get_db)):
-    game = Game(player_color=req.player_color, engine_elo=req.engine_elo, result="*")
-    db.add(game)
-    db.commit()
-    db.refresh(game)
-
     board = chess.Board()
     engine_first_move = None
+    first_san = None
 
+    # Ask the engine for its opening move *before* writing anything, so an
+    # engine failure doesn't leave an orphaned game row behind.
     if req.player_color == "black":
-        with _engine_lock:
-            eng = _get_engine(req.engine_elo)
-            try:
-                uci = eng.get_best_move(board.fen(), time_limit=ENGINE_MOVE_TIME)
-            except Exception as e:
-                raise HTTPException(500, f"Engine error: {e}")
-        if uci is None:
+        try:
+            engine_first_move = run_game_engine(
+                req.engine_elo, lambda eng: eng.get_best_move(board.fen(), time_limit=ENGINE_MOVE_TIME)
+            )
+        except Exception as e:
+            raise HTTPException(500, f"Engine error: {e}")
+        if engine_first_move is None:
             raise HTTPException(500, "Engine returned no move for starting position")
-        move = chess.Move.from_uci(uci)
-        san = board.san(move)
+        move = chess.Move.from_uci(engine_first_move)
+        first_san = board.san(move)
         board.push(move)
-        db.add(Move(game_id=game.id, ply=1, uci=uci, san=san))
-        db.commit()
-        engine_first_move = uci
+
+    game = Game(player_color=req.player_color, engine_elo=req.engine_elo, result="*")
+    db.add(game)
+    db.flush()  # assigns game.id
+    if engine_first_move:
+        db.add(Move(game_id=game.id, ply=1, uci=engine_first_move, san=first_san))
+    db.commit()
 
     return {
         "game_id": game.id,
@@ -150,6 +154,10 @@ def get_game(game_id: int, db: Session = Depends(get_db)):
         "engine_elo": game.engine_elo,
         "analyzed": bool(game.analyzed),
         "assisted": bool(game.assisted),
+        "accuracy": {
+            "white": accuracy_summary(m.classification for m in moves if m.ply % 2 == 1),
+            "black": accuracy_summary(m.classification for m in moves if m.ply % 2 == 0),
+        } if game.analyzed else None,
         "moves": [
             {
                 "ply": m.ply,
@@ -184,65 +192,49 @@ def make_move(game_id: int, req: MoveRequest, db: Session = Depends(get_db)):
     next_ply = (max_ply or 0) + 1
     san = board.san(move)
     board.push(move)
-    db.add(Move(game_id=game_id, ply=next_ply, uci=req.uci, san=san))
-    db.commit()
+    player_move = Move(game_id=game_id, ply=next_ply, uci=req.uci, san=san)
 
-    if ended := _check_and_end_game(game, board, game_id, db):
-        return {"fen": board.fen(), "engine_move": None, "eval_cp": None, **ended}
+    if board.is_game_over():
+        db.add(player_move)
+        db.flush()
+        ended = _check_and_end_game(game, board, game_id, db)
+        return {"fen": board.fen(), "engine_move": None, "eval_cp": None, "engine_eval_cp": None, **ended}
 
-    with _engine_lock:
-        eng = _get_engine(game.engine_elo)
-        try:
-            eval_cp, engine_uci = eng.analyse_position(board.fen(), time_limit=ENGINE_MOVE_TIME)
-        except Exception as e:
-            raise HTTPException(500, f"Engine error: {e}")
-
-    if engine_uci is None:
-        # Terminal position: engine has no move (checkmate, stalemate, etc.)
-        result = board.result()
-        outcome = board.outcome()
-        termination = _TERMINATION_LABELS.get(outcome.termination) if outcome else None
-        game.result = result
-        game.pgn = generate_pgn(game_id, db)
-        db.commit()
-        return {
-            "fen": board.fen(),
-            "engine_move": None,
-            "eval_cp": eval_cp,
-            "game_over": True,
-            "result": result,
-            "termination": termination,
-        }
-
+    # Pick the engine's reply before persisting anything: if the engine fails,
+    # nothing is saved and the client can simply retry the same move.
+    fen_after_player = board.fen()
     try:
-        engine_move = chess.Move.from_uci(engine_uci)
-    except (ValueError, chess.InvalidMoveError) as e:
-        raise HTTPException(500, f"Engine returned invalid UCI move '{engine_uci}': {e}")
+        engine_uci = run_game_engine(
+            game.engine_elo, lambda eng: eng.get_best_move(fen_after_player, time_limit=ENGINE_MOVE_TIME)
+        )
+    except Exception as e:
+        raise HTTPException(500, f"Engine error: {e}")
+    if engine_uci is None:
+        raise HTTPException(500, "Engine returned no move")
+    engine_move = chess.Move.from_uci(engine_uci)
     engine_san = board.san(engine_move)
+
+    # Evals come from the full-strength engine so they're consistent with each
+    # other: eval_cp = after the player's move, engine_eval_cp = after the reply.
+    eval_cp = _live_eval(fen_after_player)
     board.push(engine_move)
 
-    next_ply += 1
-    db.add(Move(game_id=game_id, ply=next_ply, uci=engine_uci, san=engine_san))
-    db.commit()
-
+    db.add(player_move)
+    db.add(Move(game_id=game_id, ply=next_ply + 1, uci=engine_uci, san=engine_san))
+    db.flush()
     ended = _check_and_end_game(game, board, game_id, db)
-
-    # Eval after engine's move — used by frontend for engine move quality classification
-    engine_eval_cp: float | None = None
     if not ended:
-        with _hint_lock:
-            try:
-                engine_eval_cp = _get_hint_engine().evaluate(board.fen(), time_limit=0.05)
-            except Exception:
-                pass
+        db.commit()
+    engine_eval_cp = _live_eval(board.fen())
 
     return {
         "fen": board.fen(),
         "engine_move": engine_uci,
         "eval_cp": eval_cp,
         "engine_eval_cp": engine_eval_cp,
-        "game_over": ended["game_over"] if ended else False,
+        "game_over": bool(ended),
         "result": ended["result"] if ended else None,
+        "termination": ended["termination"] if ended else None,
     }
 
 
@@ -313,34 +305,26 @@ def get_stats(db: Session = Depends(get_db)):
         else:
             losses += 1
 
-    # Accuracy: % of player's own moves that are best or good (analyzed games only)
-    counts: dict[str, int] = {}
-    player_total = 0
+    # Accuracy: weighted score over the player's own moves (analyzed games only);
+    # same definition the Review page shows per game.
     rows = (
-        db.query(Move.game_id, Move.ply, Move.classification, Game.player_color)
+        db.query(Move.ply, Move.classification, Game.player_color)
         .join(Game, Game.id == Move.game_id)
-        .filter(Game.analyzed == True)
+        .filter(Game.analyzed == 1)
         .all()
     )
-    for game_id_row, ply, classification, player_color in rows:
-        is_player = (player_color == "white" and ply % 2 == 1) or \
-                    (player_color == "black" and ply % 2 == 0)
-        if is_player and classification:
-            counts[classification] = counts.get(classification, 0) + 1
-            player_total += 1
-
-    accuracy = None
-    if player_total > 0:
-        good_moves = counts.get("best", 0) + counts.get("good", 0)
-        accuracy = round(good_moves / player_total * 100, 1)
+    summary = accuracy_summary(
+        classification for ply, classification, player_color in rows
+        if (ply % 2 == 1) == (player_color == "white")
+    )
 
     return {
         "total": total,
         "wins": wins,
         "losses": losses,
         "draws": draws,
-        "accuracy": accuracy,
-        "move_counts": counts,
+        "accuracy": summary["pct"] if summary else None,
+        "move_counts": summary["counts"] if summary else {},
         "analyzed_games": sum(1 for g in games if g.analyzed),
     }
 
@@ -353,8 +337,8 @@ def get_hint(game_id: int, db: Session = Depends(get_db)):
     board = reconstruct_board(game_id, db)
     if board.is_game_over():
         raise HTTPException(400, "Position is terminal")
-    with _hint_lock:
-        uci = _get_hint_engine().get_best_move(board.fen(), time_limit=HINT_TIME)
+    fen = board.fen()
+    uci = run_hint_engine(lambda eng: eng.get_best_move(fen, time_limit=HINT_TIME))
     if uci is None:
         raise HTTPException(400, "No hint available for this position")
     # Mark as assisted only while the game is still in progress
@@ -374,10 +358,14 @@ def engine_best(req: BestMoveRequest):
         board = chess.Board(req.fen)
     except ValueError:
         raise HTTPException(400, "Invalid FEN")
+    # Stockfish can segfault on impossible positions (missing king, pawns on the
+    # back rank, side not to move in check), so reject them up front.
+    if not board.is_valid():
+        raise HTTPException(400, "Illegal position")
     if board.is_game_over():
         raise HTTPException(400, "Position is terminal")
-    with _hint_lock:
-        uci = _get_hint_engine().get_best_move(board.fen(), time_limit=HINT_TIME)
+    fen = board.fen()
+    uci = run_hint_engine(lambda eng: eng.get_best_move(fen, time_limit=HINT_TIME))
     if uci is None:
         raise HTTPException(400, "No move available for this position")
     resp = {"from_sq": uci[:2], "to_sq": uci[2:4]}
@@ -398,10 +386,8 @@ def takeback(game_id: int, db: Session = Depends(get_db)):
         raise HTTPException(400, "No move to take back")
     # Remove the last two plies: engine reply + player move
     db.query(Move).filter(Move.game_id == game_id, Move.ply >= max_ply - 1).delete()
+    game.assisted = 1
     db.commit()
-    if not game.assisted:
-        game.assisted = 1
-        db.commit()
     board = reconstruct_board(game_id, db)
     return {"fen": board.fen()}
 

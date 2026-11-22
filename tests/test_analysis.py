@@ -36,15 +36,16 @@ def apply_db_override():
 
 
 def test_classify_move_boundaries():
-    assert classify_move(201) == "blunder"
-    assert classify_move(200) == "blunder"
-    assert classify_move(199) == "mistake"
-    assert classify_move(100) == "mistake"
-    assert classify_move(99) == "inaccuracy"
-    assert classify_move(50) == "inaccuracy"
-    assert classify_move(49) == "good"
+    # Thresholds are in win-percentage points lost (Lichess-style), not centipawns
+    assert classify_move(30) == "blunder"
+    assert classify_move(15) == "blunder"
+    assert classify_move(14.9) == "mistake"
+    assert classify_move(10) == "mistake"
+    assert classify_move(9.9) == "inaccuracy"
+    assert classify_move(5) == "inaccuracy"
+    assert classify_move(4.9) == "good"
     assert classify_move(0) == "best"
-    assert classify_move(-30) == "best"
+    assert classify_move(-2) == "best"
 
 def test_analyze_completed_game():
     # Start a game and make a couple of moves

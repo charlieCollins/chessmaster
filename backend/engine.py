@@ -1,10 +1,29 @@
 import chess
 import chess.engine
-from typing import Optional
+from typing import Callable, Optional, TypeVar
 import shutil
 import os
+import threading
 
-STOCKFISH_PATH = shutil.which("stockfish") or os.getenv("STOCKFISH_PATH", "stockfish")
+# Explicit env var wins; otherwise whatever `stockfish` is on PATH.
+STOCKFISH_PATH = os.getenv("STOCKFISH_PATH") or shutil.which("stockfish") or "stockfish"
+
+MATE_CP = 10000  # centipawn value used to represent a forced mate
+
+T = TypeVar("T")
+
+
+def _white_cp(score: chess.engine.PovScore) -> float:
+    """Centipawns from White's POV; mates map to ±MATE_CP (minus distance to mate)."""
+    return float(score.white().score(mate_score=MATE_CP))
+
+
+def terminal_eval(board: chess.Board) -> float:
+    """Eval for a finished game: ±MATE_CP for checkmate, 0 for any draw."""
+    outcome = board.outcome()
+    if outcome is None or outcome.winner is None:
+        return 0.0
+    return MATE_CP if outcome.winner == chess.WHITE else -MATE_CP
 
 # Sorted list of (elo, skill_level) pairs for interpolation.
 # Maps ELOs below UCI_Elo minimum (~1320) to Stockfish Skill Level (0-20).
@@ -86,14 +105,13 @@ class ChessEngine:
             return None
         return result.move.uci()
 
-    def evaluate(self, fen: str, time_limit: float = 0.1) -> Optional[float]:
-        """Return centipawn evaluation from White's perspective. Mate = +-10000."""
+    def evaluate(self, fen: str, time_limit: float = 0.1) -> float:
+        """Return centipawn evaluation from White's perspective. Mate = ±MATE_CP."""
         board = chess.Board(fen)
+        if board.is_game_over():
+            return terminal_eval(board)
         info = self._engine.analyse(board, chess.engine.Limit(time=time_limit))
-        score = info["score"].white()
-        if score.is_mate():
-            return 10000.0 if score.mate() > 0 else -10000.0
-        return float(score.cp)
+        return _white_cp(info["score"])
 
     def analyse_position(self, fen: str, time_limit: float = 0.1) -> tuple[float, Optional[str]]:
         """Single Stockfish call returning (eval_cp_from_white, chosen_uci).
@@ -104,25 +122,54 @@ class ChessEngine:
         """
         board = chess.Board(fen)
         if board.is_game_over():
-            outcome = board.outcome()
-            if outcome and outcome.winner == chess.WHITE:
-                return 10000.0, None
-            if outcome and outcome.winner == chess.BLACK:
-                return -10000.0, None
-            return 0.0, None
+            return terminal_eval(board), None
         result = self._engine.play(board, self._limit(time_limit), info=chess.engine.INFO_SCORE)
         if result.move is None:
             return 0.0, None
-        score_obj = result.info.get("score")
-        if score_obj is not None:
-            score = score_obj.white()
-            ev = (10000.0 if score.mate() > 0 else -10000.0) if score.is_mate() else float(score.cp)
-        else:
+        score = result.info.get("score")
+        if score is None:
             # Fallback: score not in play() info — do a quick separate analyse call
-            info = self._engine.analyse(board, chess.engine.Limit(time=time_limit))
-            score = info["score"].white()
-            ev = (10000.0 if score.mate() > 0 else -10000.0) if score.is_mate() else float(score.cp)
-        return ev, result.move.uci()
+            score = self._engine.analyse(board, chess.engine.Limit(time=time_limit))["score"]
+        return _white_cp(score), result.move.uci()
 
     def close(self):
         self._engine.quit()
+
+
+class EngineSlot:
+    """A lazily started, lock-guarded ChessEngine that survives Stockfish crashes.
+
+    If Stockfish dies mid-call (e.g. segfault on a malformed position), the dead
+    process is discarded and the call is retried once on a fresh engine, so one
+    bad request can't take the endpoint down until the server restarts.
+    """
+
+    def __init__(self, factory: Callable[[], ChessEngine]):
+        self._factory = factory
+        self._engine: ChessEngine | None = None
+        self._lock = threading.Lock()
+
+    def run(self, fn: Callable[[ChessEngine], T]) -> T:
+        with self._lock:
+            for attempt in range(2):
+                if self._engine is None:
+                    self._engine = self._factory()
+                try:
+                    return fn(self._engine)
+                except chess.engine.EngineTerminatedError:
+                    self._discard()
+                    if attempt == 1:
+                        raise
+            raise AssertionError("unreachable")
+
+    def _discard(self) -> None:
+        eng, self._engine = self._engine, None
+        if eng is not None:
+            try:
+                eng.close()
+            except Exception:
+                pass  # process is already dead
+
+    def close(self) -> None:
+        with self._lock:
+            self._discard()

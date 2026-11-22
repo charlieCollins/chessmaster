@@ -10,6 +10,7 @@ CORS_ORIGINS: list[str] = [o.strip() for o in _cors_env.split(",")]
 ENGINE_MOVE_TIME    = 0.1   # game engine: move generation + eval
 HINT_TIME           = 0.3   # hint / best-move endpoints (full-strength engine)
 ANALYSIS_TIME       = 0.1   # per-position time during post-game analysis
+LIVE_EVAL_TIME      = 0.1   # full-strength eval shown after each move during play
 
 # ── Game defaults ──────────────────────────────────────────────────────────────
 DEFAULT_ENGINE_ELO  = 1500
