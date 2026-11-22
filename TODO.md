@@ -9,6 +9,12 @@ Full (Strict)).
 
 ### 1. Fix the 526 (origin certificate)
 
+> The Cloudflare MCP connector is authorized for Claude. In a session where it's
+> signed in, it can check the Cloudflare side directly — zone SSL mode, the
+> DNS record's target IP, issued Origin CA certificates (and their expiry), and
+> set up the Access application in step 3. The origin-side checks below still
+> need to be run on the VM itself.
+
 Run on the GCP VM:
 
 ```bash
