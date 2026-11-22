@@ -39,7 +39,10 @@ pytest -v
 - `backend/db.py` — SQLAlchemy models: Game, Move. SQLite at `chess.db` (env: `DATABASE_URL`)
 - `backend/game_utils.py` — `reconstruct_board`, `generate_pgn`, `classify_move`
 - `backend/analysis.py` — Post-game analysis: iterates all moves, classifies each with full-strength Stockfish
-- `frontend/src/App.tsx` — Routing shell (Play / Learn / Review pages)
+- `backend/config.py` — App configuration: timing constants (ENGINE_MOVE_TIME, HINT_TIME, ANALYSIS_TIME), DEFAULT_ENGINE_ELO, CORS_ORIGINS
+- `frontend/src/App.tsx` — Routing shell (Home / Play / Learn / Review pages)
+- `frontend/src/themes.ts` — Theme definitions: Classic, Forest, Ocean, Night, Autumn, Obsidian; maps theme names to CSS variable overrides
+- `frontend/src/config.ts` — Frontend config: exports `API = "http://localhost:8000"` and other constants
 - `frontend/src/pages/Home.tsx` — Dashboard: win/loss stats + completed game history table
 - `frontend/src/pages/Play.tsx` — Interactive board, play vs engine, color/ELO selection, eval bar, hint, best-reply
 - `frontend/src/pages/Review.tsx` — Annotated game replay with nav controls, run-analysis button, accuracy score
@@ -54,12 +57,14 @@ pytest -v
 | GET | `/api/game/{id}` | Get game state + moves |
 | POST | `/api/game/{id}/move` | Make a move (returns engine response + eval) |
 | POST | `/api/game/{id}/resign` | Resign the game |
-| POST | `/api/game/{id}/abort` | Abort game and delete it from DB |
-| POST | `/api/game/{id}/analyze` | Run post-game Stockfish analysis (~30s) |
+| DELETE | `/api/game/{id}` | Delete a game and its moves |
+| POST | `/api/game/{id}/analyze` | Run post-game Stockfish analysis (~4–30s (depends on game length)) |
 | GET | `/api/game/{id}/hint` | Best move for current position (marks game `assisted=1`) |
 | POST | `/api/engine/best` | Best move for any FEN (`{fen}`) — NOT tracked as assisted |
 | GET | `/api/games` | List all completed games |
 | GET | `/api/stats` | Aggregate win/loss/accuracy stats |
+
+**Note on `GET /api/game/{id}` moves:** Per-move `eval_cp` and `eval_loss_cp` are stored in the DB during analysis but NOT returned in the response. Only `classification` and `best_uci` are returned. Live `eval_cp` is returned during gameplay via `POST /api/game/{id}/move`.
 
 ## Engine Strength Modes
 
@@ -82,7 +87,7 @@ Two engine instances run at all times:
 ## Key Dependencies
 
 - `python-chess` — board logic, FEN/PGN, move validation, UCI engine protocol
-- Stockfish binary — auto-detected via `shutil.which("stockfish")`; falls back to `.venv/bin/stockfish`
+- Stockfish binary — auto-detected via `shutil.which("stockfish")`; falls back to `STOCKFISH_PATH` env var, then bare `"stockfish"` (fails clearly if not installed)
 - `react-chessboard` v5 — interactive board component (uses `options={{...}}` prop, not flat props)
 - `chess.js` — client-side FEN reconstruction for move replay in Review and Learn pages
 
@@ -96,7 +101,7 @@ Play page converts to player's POV for display.
 | Classification | Eval loss |
 |----------------|-----------|
 | Best | <= 0 cp (engine's top choice or better) |
-| Good | 1–49 cp loss |
+| Good | < 50 cp loss |
 | Inaccuracy | 50–99 cp loss |
 | Mistake | 100–199 cp loss |
 | Blunder | >= 200 cp loss |
@@ -115,6 +120,7 @@ games
   player_color  TEXT        -- "white" | "black"
   engine_elo    INTEGER
   played_at     DATETIME
+  source        TEXT        -- game source; default "local" (reserved for future PGN import)
   analyzed      INTEGER     -- 0 | 1
   assisted      INTEGER     -- 0 | 1 (hint used during active play)
 
@@ -125,6 +131,10 @@ moves
   uci           TEXT        -- e.g. "e2e4"
   san           TEXT        -- e.g. "e4"
   classification TEXT       -- best | good | inaccuracy | mistake | blunder
+  eval_cp       FLOAT       -- centipawn evaluation after this move (white's POV, nullable)
+  eval_loss_cp  FLOAT       -- centipawns lost vs the best move (nullable, populated during analysis)
+                            -- NOTE: column added to ORM but NO migration; existing DBs will not have this until recreated
+  best_uci       TEXT       -- Stockfish's best move UCI string at that position (populated during analysis, nullable)
 ```
 
 ## Testing

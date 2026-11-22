@@ -32,7 +32,11 @@ def analyze_game(game_id: int, db: Session) -> None:
     board = chess.Board()
     fens: list[str] = [board.fen()]          # fens[0] = starting position
     for m in moves:
-        board.push(chess.Move.from_uci(m.uci))
+        try:
+            board.push(chess.Move.from_uci(m.uci))
+        except (ValueError, chess.InvalidMoveError):
+            # Skip bad moves — don't crash the whole analysis
+            continue
         fens.append(board.fen())
     # fens[i]   = position before move i  (eval_before for move i)
     # fens[i+1] = position after  move i  (eval_after  for move i)
@@ -49,7 +53,10 @@ def analyze_game(game_id: int, db: Session) -> None:
             best_ucis.append(best)
 
         # ── Step 3: classify each move ───────────────────────────────────────
+        # fens may be shorter than moves if any UCI was invalid (step 1 skips bad ones)
         for i, move_record in enumerate(moves):
+            if i + 1 >= len(evals):
+                break  # no eval pair available for this move; skip remaining
             eval_before = evals[i]
             eval_after  = evals[i + 1]
 
@@ -60,12 +67,15 @@ def analyze_game(game_id: int, db: Session) -> None:
             else:                           # Black's move
                 eval_loss = eval_after - eval_before
 
+            eval_loss = max(0, min(eval_loss, 2000))  # cap between 0 and 2000cp
             move_record.eval_cp         = eval_after
             move_record.best_uci        = best_ucis[i]
             move_record.eval_loss_cp    = eval_loss
             move_record.classification  = classify_move(eval_loss)
 
         game = db.get(Game, game_id)
+        if game is None:
+            return  # game was deleted during analysis
         game.analyzed = 1
         db.commit()
     finally:

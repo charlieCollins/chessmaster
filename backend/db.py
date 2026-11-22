@@ -1,12 +1,23 @@
 # backend/db.py
 import os
 import datetime
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, text
+from sqlalchemy import create_engine, event, Column, Integer, String, Float, DateTime, ForeignKey, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./chess.db")
 
-_engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+_engine = create_engine(
+    DATABASE_URL,
+    connect_args={"check_same_thread": False, "timeout": 10},
+)
+
+@event.listens_for(_engine, "connect")
+def set_sqlite_pragma(dbapi_conn, connection_record):
+    cursor = dbapi_conn.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.close()
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
 
 
@@ -46,16 +57,15 @@ def init_db():
     with _engine.connect() as conn:
         for stmt in [
             "ALTER TABLE games ADD COLUMN assisted INTEGER DEFAULT 0",
+            "ALTER TABLE moves ADD COLUMN best_uci TEXT",
+            "ALTER TABLE moves ADD COLUMN eval_loss_cp REAL",
         ]:
             try:
                 conn.execute(text(stmt))
                 conn.commit()
-            except Exception:
-                pass  # Column already exists
-
-
-def get_db_session() -> Session:
-    return SessionLocal()
+            except OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    raise
 
 
 # FastAPI dependency

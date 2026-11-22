@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 os.environ["DATABASE_URL"] = "sqlite://"  # in-memory for tests
 
-from backend.db import Base, Game, Move, get_db_session
+from backend.db import Base, Game, Move
 
 def test_game_model_creates_and_reads():
     engine = create_engine("sqlite://")

@@ -2,7 +2,7 @@
 import chess
 import chess.pgn
 from sqlalchemy.orm import Session
-from .db import Move
+from .db import Move, Game
 
 
 def reconstruct_board(game_id: int, db: Session) -> chess.Board:
@@ -20,20 +20,35 @@ def reconstruct_board(game_id: int, db: Session) -> chess.Board:
 
 
 def generate_pgn(game_id: int, db: Session) -> str:
-    """Generate PGN string from stored moves."""
+    """Generate PGN string from stored moves, including standard headers."""
+    db_game = db.get(Game, game_id)
     moves = (
         db.query(Move)
         .filter(Move.game_id == game_id)
         .order_by(Move.ply)
         .all()
     )
-    game = chess.pgn.Game()
-    node = game
+    game_node = chess.pgn.Game()
+    if db_game is not None:
+        game_node.headers["White"] = "Player" if db_game.player_color == "white" else "Stockfish"
+        game_node.headers["Black"] = "Stockfish" if db_game.player_color == "white" else "Player"
+        game_node.headers["Result"] = db_game.result if db_game.result else "*"
+        game_node.headers["Date"] = (
+            db_game.played_at.strftime("%Y.%m.%d") if db_game.played_at else "????.??.??"
+        )
+    node = game_node
+    board = chess.Board()
     for move in moves:
-        chess_move = chess.Move.from_uci(move.uci)
-        node = node.add_variation(chess_move)
-    exporter = chess.pgn.StringExporter(headers=False, comments=False, variations=False)
-    return game.accept(exporter)
+        try:
+            chess_move = chess.Move.from_uci(move.uci)
+            if chess_move not in board.legal_moves:
+                break  # stop at first illegal move; PGN up to this point is valid
+            node = node.add_variation(chess_move)
+            board.push(chess_move)
+        except (ValueError, chess.InvalidMoveError):
+            break
+    exporter = chess.pgn.StringExporter(headers=True, comments=False, variations=False)
+    return game_node.accept(exporter)
 
 
 def classify_move(eval_loss_cp: float) -> str:

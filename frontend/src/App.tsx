@@ -38,9 +38,12 @@ function KingLogo() {
 export default function App() {
   const [page, setPage] = useState<Page>("home");
   const [reviewGameId, setReviewGameId] = useState<number | null>(null);
-  const [themeIdx, setThemeIdx] = useState(() =>
-    Number(localStorage.getItem("boardThemeIdx") ?? 0)
-  );
+  const [gameActive, setGameActive] = useState(false);
+  const [themeIdx, setThemeIdx] = useState(() => {
+    const stored = Number(localStorage.getItem("boardThemeIdx"));
+    const safeStored = Number.isFinite(stored) ? stored : 0;
+    return Math.min(Math.max(0, safeStored), THEMES.length - 1);
+  });
 
   function cycleTheme() {
     setThemeIdx((i) => {
@@ -57,6 +60,14 @@ export default function App() {
     Object.entries(boardTheme.vars).forEach(([k, v]) => root.setProperty(k, v));
   }, [boardTheme]);
 
+  function navigate(newPage: Page) {
+    if (gameActive && newPage !== "play") {
+      if (!window.confirm("You have a game in progress. Leave anyway? The game will be saved but you'll lose the board state.")) return;
+    }
+    setPage(newPage);
+    if (newPage !== "play") setGameActive(false);
+  }
+
   function goToReview(gameId: number) {
     setReviewGameId(gameId);
     setPage("review");
@@ -66,7 +77,7 @@ export default function App() {
     <div className="app-shell">
       <header className="app-header">
         <div
-          onClick={() => setPage("home")}
+          onClick={() => navigate("home")}
           style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", flexShrink: 0 }}
         >
           <KingLogo />
@@ -89,12 +100,12 @@ export default function App() {
         </div>
 
         <nav className="app-nav">
-          <button className={`nav-btn${page === "home"   ? " active" : ""}`} onClick={() => setPage("home")}>Home</button>
-          <button className={`nav-btn${page === "play"   ? " active" : ""}`} onClick={() => setPage("play")}>Play</button>
+          <button className={`nav-btn${page === "home"   ? " active" : ""}`} onClick={() => navigate("home")}>Home</button>
+          <button className={`nav-btn${page === "play"   ? " active" : ""}`} onClick={() => navigate("play")}>Play</button>
           {reviewGameId && (
-            <button className={`nav-btn${page === "review" ? " active" : ""}`} onClick={() => setPage("review")}>Review</button>
+            <button className={`nav-btn${page === "review" ? " active" : ""}`} onClick={() => navigate("review")}>Review</button>
           )}
-          <button className={`nav-btn${page === "learn"  ? " active" : ""}`} onClick={() => setPage("learn")}>Learn</button>
+          <button className={`nav-btn${page === "learn"  ? " active" : ""}`} onClick={() => navigate("learn")}>Learn</button>
           <button
             onClick={cycleTheme}
             title={`Board theme: ${boardTheme.name} (click to cycle)`}
@@ -118,8 +129,8 @@ export default function App() {
 
       <main className="app-main">
         <ThemeContext.Provider value={boardTheme}>
-          {page === "home"   && <Home onPlay={() => setPage("play")} onReview={goToReview} />}
-          {page === "play"   && <Play onGameEnd={goToReview} />}
+          {page === "home"   && <Home onPlay={() => navigate("play")} onReview={goToReview} />}
+          {page === "play"   && <Play onGameEnd={goToReview} onGameActive={setGameActive} />}
           {page === "learn"  && <Learn />}
           {page === "review" && reviewGameId && <Review gameId={reviewGameId} />}
         </ThemeContext.Provider>

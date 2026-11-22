@@ -1,7 +1,6 @@
 // frontend/src/pages/Home.tsx
-import { useState, useEffect } from "react";
-
-const API = "http://localhost:8000";
+import { useState, useEffect, useRef } from "react";
+import { API } from "../config";
 
 interface GameRow {
   game_id: number;
@@ -48,21 +47,45 @@ export default function Home({ onPlay, onReview }: HomeProps) {
   const [stats, setStats]   = useState<Stats | null>(null);
   const [games, setGames]   = useState<GameRow[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const deleteErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function reload() {
     return Promise.all([
-      fetch(`${API}/api/stats`).then((r) => r.json()),
-      fetch(`${API}/api/games`).then((r) => r.json()),
+      fetch(`${API}/api/stats`).then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); }),
+      fetch(`${API}/api/games`).then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); }),
     ]).then(([s, g]) => { setStats(s); setGames(g); });
   }
 
   useEffect(() => {
-    reload().then(() => setLoading(false));
+    reload()
+      .then(() => setLoading(false))
+      .catch(() => {
+        setLoading(false);
+        setLoadError("Could not connect to server. Is the backend running?");
+      });
+  }, []);
+
+  useEffect(() => {
+    return () => { if (deleteErrorTimerRef.current) clearTimeout(deleteErrorTimerRef.current); };
   }, []);
 
   async function deleteGame(gameId: number) {
-    await fetch(`${API}/api/game/${gameId}`, { method: "DELETE" });
-    reload();
+    try {
+      const res = await fetch(`${API}/api/game/${gameId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(`Delete failed: ${res.statusText}`);
+      reload().catch(() => {
+        setDeleteError("Game deleted but list failed to refresh. Please reload.");
+        if (deleteErrorTimerRef.current) clearTimeout(deleteErrorTimerRef.current);
+        deleteErrorTimerRef.current = setTimeout(() => setDeleteError(null), 4000);
+      });
+    } catch {
+      setDeleteError("Failed to delete game. Please try again.");
+      if (deleteErrorTimerRef.current) clearTimeout(deleteErrorTimerRef.current);
+      deleteErrorTimerRef.current = setTimeout(() => setDeleteError(null), 3000);
+    }
   }
 
   const MOVE_COLORS: Record<string, string> = {
@@ -73,12 +96,24 @@ export default function Home({ onPlay, onReview }: HomeProps) {
   if (loading) {
     return <div className="dim mono" style={{ paddingTop: 64, textAlign: "center" }}>Loading…</div>;
   }
+  if (!stats || !games) return (
+    <div>
+      {loadError && <div style={{ color: "var(--loss)", fontFamily: "var(--font-mono)", fontSize: 13 }}>{loadError}</div>}
+    </div>
+  );
 
-  const s = stats!;
-  const g = games!;
+  const s = stats;
+  const g = games;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 40 }}>
+
+      {/* Load error */}
+      {loadError && (
+        <div style={{ padding: "12px 16px", background: "rgba(224,90,90,0.08)", border: "1px solid var(--loss)", borderRadius: "var(--radius)", color: "var(--loss)", fontFamily: "var(--font-mono)", fontSize: 12, marginBottom: 16 }}>
+          {loadError}
+        </div>
+      )}
 
       {/* CTA */}
       <div>
@@ -135,6 +170,17 @@ export default function Home({ onPlay, onReview }: HomeProps) {
       {/* Game history */}
       <section>
         <div className="section-label">Game History</div>
+
+        {deleteError && (
+          <div style={{
+            marginBottom: 8, padding: "6px 12px", borderRadius: 4,
+            background: "var(--danger-dim, rgba(220,50,50,0.15))",
+            color: "var(--loss)", fontSize: 13, fontFamily: "var(--font-mono)",
+          }}>
+            {deleteError}
+          </div>
+        )}
+
         {g.length === 0 ? (
           <div className="empty-state">
             No completed games yet.<br />
@@ -151,6 +197,7 @@ export default function Home({ onPlay, onReview }: HomeProps) {
                 <th>vs ELO</th>
                 <th>Result</th>
                 <th>Moves</th>
+                <th>Accuracy</th>
                 <th>Analyzed</th>
                 <th title="Used Show Best hint">Hint</th>
                 <th></th>
@@ -170,6 +217,7 @@ export default function Home({ onPlay, onReview }: HomeProps) {
                     <td className="mono">{row.engine_elo}</td>
                     <td style={{ color: outcomeColor, fontWeight: 600 }}>{outcome}</td>
                     <td className="mono dim">{Math.ceil(row.move_count / 2)}</td>
+                    <td className="mono dim" style={{ fontSize: 12 }}>—</td>
                     <td className="dim mono" style={{ fontSize: 12 }}>
                       {row.analyzed ? "✓" : "—"}
                     </td>
@@ -178,18 +226,28 @@ export default function Home({ onPlay, onReview }: HomeProps) {
                     </td>
                     <td>
                       <button onClick={() => onReview(row.game_id)} style={{ fontSize: 12, padding: "4px 12px" }}>
-                        {row.analyzed ? "Review" : "Review / Analyze"}
+                        Review
                       </button>
                     </td>
                     <td>
-                      <button
-                        className="danger-ghost"
-                        onClick={() => { if (confirm("Delete this game?")) deleteGame(row.game_id); }}
-                        style={{ fontSize: 12, padding: "4px 8px" }}
-                        title="Delete game"
-                      >
-                        ✕
-                      </button>
+                      {confirmDeleteId === row.game_id ? (
+                        <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          <span style={{ fontSize: 11, color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>Delete?</span>
+                          <button className="danger-ghost" style={{ padding: "3px 8px", fontSize: 11 }}
+                            onClick={() => { deleteGame(row.game_id); setConfirmDeleteId(null); }}>
+                            Yes
+                          </button>
+                          <button className="ghost" style={{ padding: "3px 8px", fontSize: 11 }}
+                            onClick={() => setConfirmDeleteId(null)}>
+                            No
+                          </button>
+                        </span>
+                      ) : (
+                        <button className="danger-ghost" onClick={() => setConfirmDeleteId(row.game_id)}
+                          style={{ padding: "3px 8px", fontSize: 11 }}>
+                          Delete
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );

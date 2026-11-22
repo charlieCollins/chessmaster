@@ -1,5 +1,5 @@
 // frontend/src/pages/Learn.tsx
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Chessboard } from "react-chessboard";
 import { Chess } from "chess.js";
 import { OPENINGS, E4_OPENINGS, D4_OPENINGS, FLANK_OPENINGS } from "../data/openings";
@@ -9,6 +9,17 @@ import { useBoardTheme } from "../themes";
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 type SqStyles = Record<string, { backgroundColor: string }>;
+
+// Responsive board size hook (mirrors the one in Play.tsx / Review.tsx)
+function useBoardSize(max: number): number {
+  const [size, setSize] = useState(() => Math.min(max, window.innerWidth - 48));
+  useEffect(() => {
+    const handler = () => setSize(Math.min(max, window.innerWidth - 48));
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, [max]);
+  return size;
+}
 
 const GOLD   = "rgba(201,168,76,0.40)";
 const RED    = "rgba(224,90,90,0.42)";
@@ -226,9 +237,9 @@ function KnightsLesson({ onBack }: { onBack: () => void }) {
               styles={{
                 ...sq(["b5"], KNIGHT),
                 ...sq(["a3","c3","a7","d4","d6","c7"], GOLD),
-                ...sq(["a2","k1".replace("k","b")], RED),
+                ...sq(["a2","b1"], RED),
               }}
-              caption="Nb5 attacks Ra2, Bk1, and pawn simultaneously — a triple fork"
+              caption="Nb5 attacks Ra2, Bb1, and pawn simultaneously — a triple fork"
             />
           </TipCard>
 
@@ -1333,17 +1344,20 @@ function OpeningCard({
   openingKey, onSelect,
 }: { openingKey: OpeningKey; onSelect: (k: OpeningKey) => void }) {
   const o = OPENINGS[openingKey];
+  const [hovered, setHovered] = useState(false);
   return (
     <div
       onClick={() => onSelect(openingKey)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
-        background: "var(--surface)", border: "1px solid var(--border)",
+        background: hovered ? "var(--raised)" : "var(--surface)",
+        border: "1px solid var(--border)",
+        borderColor: hovered ? "var(--gold)" : "var(--border)",
         borderRadius: "var(--radius-lg)", padding: "16px 18px",
         cursor: "pointer", width: 190, userSelect: "none",
         transition: "border-color var(--transition), background var(--transition)",
       }}
-      onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = "var(--gold)"; el.style.background = "var(--raised)"; }}
-      onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = ""; el.style.background = ""; }}
     >
       <div style={{ fontSize: 28, marginBottom: 8 }}>{o.icon}</div>
       <div style={{ fontFamily: "var(--font-display)", fontSize: 14, color: "var(--text-bright)", marginBottom: 4 }}>
@@ -1407,6 +1421,10 @@ function OpeningDetail({
   const [lineIdx, setLineIdx] = useState(0);
   const [ply, setPly] = useState(0);
   const boardTheme = useBoardTheme();
+  // FIX 5 — responsive board size
+  const boardSize = useBoardSize(420);
+  // FIX 6 — ref for active row auto-scroll
+  const activeRowRef = useRef<HTMLTableRowElement | null>(null);
 
   const line = opening.lines[lineIdx];
   const fen  = fenAtPly(line.moves, ply);
@@ -1428,6 +1446,11 @@ function OpeningDetail({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [advance, retreat]);
+
+  // FIX 6 — scroll active row into view when ply changes
+  useEffect(() => {
+    activeRowRef.current?.scrollIntoView({ block: "nearest" });
+  }, [ply]);
 
   const labelStyle: React.CSSProperties = {
     fontSize: 11, fontFamily: "var(--font-mono)", letterSpacing: "0.08em",
@@ -1478,7 +1501,7 @@ function OpeningDetail({
           <Chessboard
             options={{
               position: fen,
-              boardStyle: { width: 420, height: 420, borderRadius: "var(--radius)" },
+              boardStyle: { width: boardSize, height: boardSize, borderRadius: "var(--radius)" },
               allowDragging: false,
               darkSquareStyle: { backgroundColor: boardTheme.dark },
               lightSquareStyle: { backgroundColor: boardTheme.light },
@@ -1527,7 +1550,7 @@ function OpeningDetail({
                   const wPly = n * 2 - 1;
                   const bPly = n * 2;
                   return (
-                    <tr key={n}>
+                    <tr key={n} ref={Math.ceil(ply / 2) === n ? activeRowRef : null}>
                       <td className="move-num">{n}.</td>
                       <td style={{ padding: "2px 4px" }}>
                         <span
@@ -1567,18 +1590,21 @@ function OpeningDetail({
 function TopicCard({
   icon, title, description, onClick, soon = false,
 }: { icon: string; title: string; description: string; onClick?: () => void; soon?: boolean }) {
+  const [hovered, setHovered] = useState(false);
   return (
     <div
       onClick={soon ? undefined : onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
-        background: "var(--surface)", border: "1px solid var(--border)",
+        background: hovered && !soon ? "var(--raised)" : "var(--surface)",
+        border: "1px solid var(--border)",
+        borderColor: hovered && !soon ? "var(--gold)" : "var(--border)",
         borderRadius: "var(--radius-lg)", padding: "20px 20px",
         cursor: soon ? "default" : "pointer", opacity: soon ? 0.45 : 1,
         width: 185, transition: "border-color var(--transition), background var(--transition)",
         userSelect: "none",
       }}
-      onMouseEnter={e => { if (!soon) { const el = e.currentTarget as HTMLElement; el.style.borderColor = "var(--gold)"; el.style.background = "var(--raised)"; }}}
-      onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = ""; el.style.background = ""; }}
     >
       <div style={{ fontSize: 34, marginBottom: 10 }}>{icon}</div>
       <div style={{ fontFamily: "var(--font-display)", fontSize: 15, color: "var(--text-bright)", marginBottom: 6 }}>
