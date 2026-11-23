@@ -65,6 +65,12 @@ spawns a Stockfish process on a 1 GB e2-micro.
 
 ## Other follow-ups
 
+- [ ] Chess corpus: decide what belongs in git. Today `corpus/raw/` (~360 MB) is
+      git-ignored and rebuilt by `scripts/fetch_corpus.sh` from `corpus/SOURCES.md`
+      (the committed index). Options: keep it index-only; or also commit the derived,
+      small, public-domain parts (book markdown, curated puzzle sets) so the Learn
+      content doesn't depend on re-downloading.
+
 - [ ] Resume in-progress games (today, leaving the Play page abandons the game;
       rows with `result = "*"` accumulate and are never shown)
 - [ ] Switch test dependency from `httpx` to the client Starlette now recommends

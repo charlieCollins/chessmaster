@@ -14,3 +14,4 @@ games/
 frontend/dist/
 .chess.pids
 .superpowers/
+corpus/raw/
