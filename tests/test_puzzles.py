@@ -131,3 +131,16 @@ def test_export_subset_full_when_cap_is_large(tmp_path):
     src = spread_db(tmp_path)
     n = export_subset(src, tmp_path / "all.sqlite", per_band=100, band=100)
     assert n == 8 - 1                                  # every quality puzzle; "low" fails the floor
+
+
+def test_runtime_import_does_not_need_zstandard():
+    """The server only installs requirements.txt; zstandard is a dev-only build dependency."""
+    import subprocess
+    import sys
+    code = ("import sys; sys.modules['zstandard'] = None\n"
+            "import corpus_tools.puzzles, backend.learn_api\n"
+            "print('ok')")
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                       env={"DATABASE_URL": "sqlite://", "PATH": "/usr/bin:/bin"},
+                       cwd=str(__import__("pathlib").Path(__file__).resolve().parent.parent))
+    assert r.returncode == 0 and r.stdout.strip() == "ok", r.stderr[-400:]

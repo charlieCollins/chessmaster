@@ -80,7 +80,12 @@ for _ in $(seq 1 30); do
     if curl -sf --unix-socket /run/chess/chess.sock http://localhost/api/engines >/dev/null; then break; fi
     sleep 1
 done
-curl -sf --unix-socket /run/chess/chess.sock http://localhost/api/engines && echo
-curl -sf --unix-socket /run/chess/chess.sock http://localhost/api/stats | head -c 200 && echo
+if ! curl -sf --unix-socket /run/chess/chess.sock http://localhost/api/engines; then
+    echo "!! the app isn't answering — last log lines:" >&2
+    journalctl -u chess -n 25 --no-pager >&2
+    exit 1
+fi
+echo
+curl -sf --unix-socket /run/chess/chess.sock http://localhost/api/stats | head -c 200; echo
 rm -rf "$STAGE"
 echo "== done"

@@ -20,7 +20,6 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
-import zstandard
 
 SCHEMA = """
 CREATE TABLE puzzles (
@@ -38,6 +37,7 @@ CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
 
 
 def _rows(dump: Path):
+    import zstandard   # build-time only (requirements-dev.txt); the server never reads the dump
     with open(dump, "rb") as fh:
         reader = zstandard.ZstdDecompressor().stream_reader(fh)
         for r in csv.DictReader(io.TextIOWrapper(reader, encoding="utf-8")):
