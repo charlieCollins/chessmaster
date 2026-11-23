@@ -80,4 +80,14 @@ sudo git -c safe.directory=/opt/chess -C /opt/chess fetch -q $REPO $BRANCH
 sudo git -c safe.directory=/opt/chess -C /opt/chess reset -q --hard FETCH_HEAD
 sudo bash /opt/chess/deploy/server.sh \$HOME/chess-deploy
 "
-echo "Deployed $(git rev-parse --short HEAD) → https://chess.azimondia.com"
+# Safety: the app has no auth of its own. If the public API answers without a Cloudflare
+# Access login, take the site down again rather than leave it open.
+code=$(curl -s -o /dev/null -w '%{http_code}' https://chess.azimondia.com/api/engines || true)
+if [ "$code" = "200" ]; then
+    gcloud compute ssh "$VM" --zone "$ZONE" --command \
+        "sudo rm -f /etc/nginx/sites-enabled/chess && sudo nginx -t && sudo systemctl reload nginx" >/dev/null 2>&1
+    echo "!! chess.azimondia.com answered WITHOUT a Cloudflare Access login — site disabled again." >&2
+    echo "   Add chess.azimondia.com to a Cloudflare Access application, then re-run deploy/deploy.sh." >&2
+    exit 1
+fi
+echo "Deployed $(git rev-parse --short HEAD) → https://chess.azimondia.com (public check: HTTP $code, login required)"
