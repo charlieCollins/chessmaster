@@ -215,8 +215,17 @@ Test files use `os.environ["DATABASE_URL"] = "sqlite://"` at module level (befor
 - **SSL**: Cloudflare Origin Certificate — wildcard `*.azimondia.com` at `/etc/ssl/cloudflare/cert.pem` + `key.pem`
   - Same cert shared by all azimondia.com subdomains (recipes, chess, flight, etc.)
   - Each subdomain gets its own nginx `sites-available/` config file
-- **App deployment**: nginx serves `frontend/dist/` as SPA, proxies `/api/` to uvicorn via unix socket
-- **nginx config**: `deploy/nginx.conf` → `/etc/nginx/sites-available/chess`
+- **Access**: Cloudflare Access (email + one-time code) in front of the whole site — the app itself has no auth
+- **Origin VM**: `instance-20260207-141914` (zone `us-west1-b`, project `azimondia`), Ubuntu 25.10, 1 GB RAM, shared
+  with other sites (recipes, readydogrescue, amazonasguide). Reach it with `gcloud compute ssh instance-20260207-141914 --zone us-west1-b`.
+- **Deploy**: `deploy/deploy.sh` from this machine (main must be pushed — the VM pulls from GitHub; the frontend is
+  built locally). Flags: `--puzzles` (48 MB puzzles-lite DB), `--engines` (lc0 + Maia), `--data` (REPLACE server
+  chess.db + games with local; old DB kept as `data/chess.db.bak-*`), `--first` = all three. Server side: `deploy/server.sh`.
+- **On the VM**: code `/opt/chess`; `/opt/chess/data/{chess.db,games/,puzzles.sqlite}`; `/opt/chess/engines/{lc0,maia/}`;
+  systemd `chess` (user `chess`, `MemoryMax=450M`, env paths in `deploy/chess.service`); nginx `deploy/nginx.conf`
+  serves `frontend/dist/` and proxies `/api/` to `/run/chess/chess.sock`.
+- **The server's chess.db is the main copy** once deployed with `--data` (phone + desktop both use it); don't
+  re-run `--data` unless you mean to overwrite the server's history with the local one.
 
 ## Phases (Roadmap)
 

@@ -195,3 +195,46 @@ def get_puzzle(db_path: Path, puzzle_id: str) -> dict | None:
     finally:
         con.close()
     return _row(r) if r else None
+
+
+def export_subset(src: Path, dst: Path, per_band: int = 150, band: int = 100, lo: int = 0, hi: int = 3400,
+                  include_ids: set[str] | frozenset[str] = frozenset(), min_plays: int = 1000,
+                  min_popularity: int = 80) -> int:
+    """A smaller DB with the same schema, for a small server: for every theme and every
+    `band`-point rating band, the `per_band` most-played quality puzzles, plus `include_ids`
+    (e.g. puzzles already in someone's history/review queue). Returns the puzzle count."""
+    dst = Path(dst)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dst.with_suffix(".sqlite.tmp")
+    if tmp.exists():
+        tmp.unlink()
+    con = sqlite3.connect(tmp)
+    try:
+        con.executescript("PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF;" + SCHEMA)
+        con.execute("ATTACH DATABASE ? AS src", (str(src),))
+        con.execute("CREATE TEMP TABLE keep (id TEXT PRIMARY KEY)")
+        themes = [r[0] for r in con.execute("SELECT theme FROM src.themes")]
+        for theme in themes:
+            for start in range(lo, hi, band):
+                con.execute(
+                    """INSERT OR IGNORE INTO keep
+                       SELECT t.id FROM src.puzzle_themes t JOIN src.puzzles p ON p.id = t.id
+                       WHERE t.theme = ? AND t.rating BETWEEN ? AND ? AND p.plays >= ? AND p.popularity >= ?
+                       ORDER BY p.plays DESC LIMIT ?""",
+                    (theme, start, start + band - 1, min_plays, min_popularity, per_band))
+        con.executemany("INSERT OR IGNORE INTO keep VALUES (?)", [(i,) for i in include_ids])
+        con.execute("INSERT INTO puzzles SELECT * FROM src.puzzles WHERE id IN (SELECT id FROM keep)")
+        con.execute("INSERT INTO puzzle_themes SELECT * FROM src.puzzle_themes WHERE id IN (SELECT id FROM keep)")
+        con.execute("INSERT INTO themes SELECT theme, count(*) FROM puzzle_themes GROUP BY theme")
+        n = con.execute("SELECT count(*) FROM puzzles").fetchone()[0]
+        src_meta = dict(con.execute("SELECT key, value FROM src.meta"))
+        con.executemany("INSERT INTO meta VALUES (?, ?)", [
+            ("source", src_meta.get("source", "")), ("subset_of", Path(src).name), ("puzzles", str(n)),
+            ("per_band", str(per_band)), ("band", str(band)),
+            ("built", datetime.now(timezone.utc).isoformat(timespec="seconds"))])
+        con.commit()
+        con.execute("DETACH DATABASE src")
+    finally:
+        con.close()
+    os.replace(tmp, dst)
+    return n

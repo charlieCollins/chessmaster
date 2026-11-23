@@ -107,3 +107,27 @@ def test_get_puzzle(tmp_path):
     p = get_puzzle(db, "r1300")
     assert p["rating"] == 1300 and p["moves"] == ["a1a2", "h1h2"] and p["themes"] == ["fork", "pin"]
     assert get_puzzle(db, "nope") is None
+
+
+def test_export_subset_caps_per_theme_band_and_keeps_requested_ids(tmp_path):
+    from corpus_tools.puzzles import export_subset, select_puzzles, get_puzzle
+    src = spread_db(tmp_path)                         # fork: 1100,1200,1300,1450,1600,1700 (+ "low"); pin: 1300,1400
+    dst = tmp_path / "lite.sqlite"
+    n = export_subset(src, dst, per_band=1, band=200, include_ids={"low"})
+    con = sqlite3.connect(dst)
+    ids = {r[0] for r in con.execute("select id from puzzles")}
+    # one quality puzzle per (theme, 200-pt band) + the explicitly kept low-quality one
+    assert "low" in ids and n == len(ids)
+    assert len([i for i in ids if i != "low"]) < 8
+    counts = dict(con.execute("select theme, count from themes"))
+    assert counts["fork"] == con.execute("select count(*) from puzzle_themes where theme='fork'").fetchone()[0]
+    assert dict(con.execute("select key, value from meta"))["subset_of"] == src.name
+    assert get_puzzle(dst, "low")["rating"] == 1300
+    assert select_puzzles(dst, ["fork"], 1300, 2, set())       # same schema → selection works
+
+
+def test_export_subset_full_when_cap_is_large(tmp_path):
+    from corpus_tools.puzzles import export_subset
+    src = spread_db(tmp_path)
+    n = export_subset(src, tmp_path / "all.sqlite", per_band=100, band=100)
+    assert n == 8 - 1                                  # every quality puzzle; "low" fails the floor

@@ -3,6 +3,7 @@
 
   .venv/bin/python scripts/build_corpus.py            # books + topic pages
   .venv/bin/python scripts/build_corpus.py puzzles    # also (re)build the Lichess puzzle DB (~2 min, 2 GB)
+  .venv/bin/python scripts/build_corpus.py puzzles-lite   # server-sized subset (deploy/deploy.sh ships it)
 """
 import sys
 from pathlib import Path
@@ -21,6 +22,26 @@ CAPABLANCA = BookSpec(
     year=1921, gutenberg_id=33870, html_zip="gutenberg/33870/33870-h.zip", html_member="33870-h/33870-h.htm")
 
 
+def build_puzzles_lite(chess_db: Path = ROOT / "chess.db") -> int:
+    """Server-sized puzzle DB (~50 MB): top puzzles per theme/rating band, plus every puzzle
+    the local chess.db history refers to (so copied review items still resolve)."""
+    import sqlite3
+    from corpus_tools.puzzles import export_subset
+    keep: set[str] = set()
+    if chess_db.exists():
+        con = sqlite3.connect(chess_db)
+        try:
+            for table in ("learn_attempts", "learn_reviews"):
+                try:
+                    keep |= {r[0] for r in con.execute(f"SELECT ref FROM {table} WHERE kind = 'puzzle'")}
+                except sqlite3.OperationalError:
+                    pass          # table not created yet
+        finally:
+            con.close()
+    return export_subset(ROOT / "corpus" / "puzzles" / "puzzles.sqlite",
+                         ROOT / "corpus" / "puzzles" / "puzzles-lite.sqlite", include_ids=keep)
+
+
 def main(argv):
     rep = build_book(CAPABLANCA, RAW, BOOKS)
     diag = rep["diagrams"]
@@ -34,6 +55,9 @@ def main(argv):
         from corpus_tools.puzzles import build_puzzle_db
         n = build_puzzle_db(RAW / "lichess" / "lichess_db_puzzle.csv.zst", ROOT / "corpus" / "puzzles" / "puzzles.sqlite")
         print(f"puzzles: {n} rows")
+    if "puzzles-lite" in argv:
+        n = build_puzzles_lite()
+        print(f"puzzles-lite: {n} puzzles → corpus/puzzles/puzzles-lite.sqlite")
     db = ROOT / "corpus" / "puzzles" / "puzzles.sqlite"
     if db.exists():
         from corpus_tools.puzzles import write_puzzle_readme

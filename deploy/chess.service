@@ -7,11 +7,19 @@ User=chess
 Group=www-data
 WorkingDirectory=/opt/chess
 Environment="DATABASE_URL=sqlite:////opt/chess/data/chess.db"
+Environment="GAMES_DIR=/opt/chess/data/games"
+Environment="PUZZLES_DB=/opt/chess/data/puzzles.sqlite"
+Environment="STOCKFISH_PATH=/usr/games/stockfish"
+Environment="LC0_PATH=/opt/chess/engines/lc0"
+Environment="MAIA_WEIGHTS_DIR=/opt/chess/engines/maia"
 RuntimeDirectory=chess
-ExecStart=/opt/chess/.venv/bin/uvicorn backend.main:app --uds /run/chess/chess.sock
-ExecReload=/bin/kill -s HUP $MAINPID
+# nginx (www-data) must be able to reach the socket
+UMask=0007
+ExecStart=/opt/chess/.venv/bin/uvicorn backend.main:app --uds /run/chess/chess.sock --workers 1
 Restart=on-failure
 RestartSec=5
+# The VM has 1 GB of RAM shared with other sites; keep the app (and its engines) in check
+MemoryMax=450M
 
 [Install]
 WantedBy=multi-user.target
