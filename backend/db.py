@@ -33,6 +33,7 @@ class Game(Base):
     result = Column(String, default="*")        # "1-0", "0-1", "1/2-1/2", "*"
     player_color = Column(String, default="white")  # "white" or "black"
     engine_elo = Column(Integer, default=1500)
+    engine = Column(String, default="stockfish")   # "stockfish" | "maia" (opponent family)
     played_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     source = Column(String, default="local")
     analyzed = Column(Integer, default=0)       # 0 = not analyzed, 1 = analyzed
@@ -64,6 +65,7 @@ def init_db():
             "ALTER TABLE games ADD COLUMN assisted INTEGER DEFAULT 0",
             "ALTER TABLE moves ADD COLUMN best_uci TEXT",
             "ALTER TABLE moves ADD COLUMN eval_loss_cp REAL",
+            "ALTER TABLE games ADD COLUMN engine TEXT DEFAULT 'stockfish'",
         ]:
             try:
                 conn.execute(text(stmt))

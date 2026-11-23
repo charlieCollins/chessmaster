@@ -9,10 +9,10 @@ from sqlalchemy.orm import Session
 import chess
 
 from .db import get_db, Game, Move, init_db
-from .engine import ChessEngine, EngineSlot
+from .engine import ChessEngine, EngineSlot, MaiaEngine, maia_available
 from .game_utils import reconstruct_board, generate_pgn, accuracy_summary
 from .analysis import analyze_game
-from .config import CORS_ORIGINS, HINT_TIME, ENGINE_MOVE_TIME, LIVE_EVAL_TIME, DEFAULT_ENGINE_ELO
+from .config import CORS_ORIGINS, HINT_TIME, ENGINE_MOVE_TIME, LIVE_EVAL_TIME, DEFAULT_ENGINE_ELO, MAIA_LEVELS
 
 
 # ── Engine lifecycle ──────────────────────────────────────────────────────────
@@ -20,10 +20,18 @@ from .config import CORS_ORIGINS, HINT_TIME, ENGINE_MOVE_TIME, LIVE_EVAL_TIME, D
 # Hint engine: full strength, used for every eval/best-move shown to the player.
 _game_engine = EngineSlot(lambda: ChessEngine(elo=DEFAULT_ENGINE_ELO))
 _hint_engine = EngineSlot(lambda: ChessEngine(full_strength=True))
+# Maia: human-trained opponent (lc0), only used to choose the opponent's moves.
+_maia_engine = EngineSlot(lambda: MaiaEngine())
 
 
-def run_game_engine(elo: int, fn):
-    """Run fn(engine) on the game engine configured to `elo`."""
+def run_game_engine(engine: str, elo: int, fn):
+    """Run fn(engine) on the opponent engine for this game, configured to `elo`."""
+    if engine == "maia":
+        def configured_maia(eng: MaiaEngine):
+            eng.set_level(elo)
+            return fn(eng)
+        return _maia_engine.run(configured_maia)
+
     def configured(eng: ChessEngine):
         eng.set_elo(elo)
         return fn(eng)
@@ -49,6 +57,7 @@ async def lifespan(app: FastAPI):
     yield
     _game_engine.close()
     _hint_engine.close()
+    _maia_engine.close()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -65,6 +74,7 @@ app.add_middleware(
 class StartGameRequest(BaseModel):
     player_color: Literal["white", "black"] = "white"
     engine_elo: int = Field(DEFAULT_ENGINE_ELO, ge=400, le=3000)
+    engine: Literal["stockfish", "maia"] = "stockfish"
 
 class MoveRequest(BaseModel):
     uci: str
@@ -97,8 +107,20 @@ def _check_and_end_game(game: Game, board: chess.Board, game_id: int, db: Sessio
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
+@app.get("/api/engines")
+def list_engines():
+    """Which opponent families this server can offer."""
+    return {"maia": {"available": maia_available(), "levels": MAIA_LEVELS}}
+
+
 @app.post("/api/game")
 def start_game(req: StartGameRequest, db: Session = Depends(get_db)):
+    if req.engine == "maia":
+        if not maia_available():
+            raise HTTPException(400, "Maia is not installed on this server")
+        if req.engine_elo not in MAIA_LEVELS:
+            raise HTTPException(400, f"Maia level must be one of {MAIA_LEVELS}")
+
     board = chess.Board()
     engine_first_move = None
     first_san = None
@@ -108,7 +130,7 @@ def start_game(req: StartGameRequest, db: Session = Depends(get_db)):
     if req.player_color == "black":
         try:
             engine_first_move = run_game_engine(
-                req.engine_elo, lambda eng: eng.get_best_move(board.fen(), time_limit=ENGINE_MOVE_TIME)
+                req.engine, req.engine_elo, lambda eng: eng.get_best_move(board.fen(), time_limit=ENGINE_MOVE_TIME)
             )
         except Exception as e:
             raise HTTPException(500, f"Engine error: {e}")
@@ -118,7 +140,7 @@ def start_game(req: StartGameRequest, db: Session = Depends(get_db)):
         first_san = board.san(move)
         board.push(move)
 
-    game = Game(player_color=req.player_color, engine_elo=req.engine_elo, result="*")
+    game = Game(player_color=req.player_color, engine_elo=req.engine_elo, engine=req.engine, result="*")
     db.add(game)
     db.flush()  # assigns game.id
     if engine_first_move:
@@ -130,6 +152,7 @@ def start_game(req: StartGameRequest, db: Session = Depends(get_db)):
         "fen": board.fen(),
         "player_color": req.player_color,
         "engine_elo": req.engine_elo,
+        "engine": req.engine,
         "engine_first_move": engine_first_move,
     }
 
@@ -152,6 +175,7 @@ def get_game(game_id: int, db: Session = Depends(get_db)):
         "result": game.result,
         "player_color": game.player_color,
         "engine_elo": game.engine_elo,
+        "engine": game.engine or "stockfish",
         "analyzed": bool(game.analyzed),
         "assisted": bool(game.assisted),
         "accuracy": {
@@ -205,7 +229,7 @@ def make_move(game_id: int, req: MoveRequest, db: Session = Depends(get_db)):
     fen_after_player = board.fen()
     try:
         engine_uci = run_game_engine(
-            game.engine_elo, lambda eng: eng.get_best_move(fen_after_player, time_limit=ENGINE_MOVE_TIME)
+            game.engine or "stockfish", game.engine_elo, lambda eng: eng.get_best_move(fen_after_player, time_limit=ENGINE_MOVE_TIME)
         )
     except Exception as e:
         raise HTTPException(500, f"Engine error: {e}")
@@ -297,6 +321,7 @@ def list_games(db: Session = Depends(get_db)):
             "result": g.result,
             "player_color": g.player_color,
             "engine_elo": g.engine_elo,
+            "engine": g.engine or "stockfish",
             "played_at": g.played_at.isoformat() + "Z" if g.played_at else None,
             "analyzed": bool(g.analyzed),
             "assisted": bool(g.assisted),

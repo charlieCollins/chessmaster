@@ -22,6 +22,11 @@ def reconstruct_board(game_id: int, db: Session) -> chess.Board:
     return board
 
 
+def opponent_name(engine: str | None, elo: int) -> str:
+    """Display name for the engine opponent, e.g. "Maia 1300" / "Stockfish 1000"."""
+    return f"{'Maia' if engine == 'maia' else 'Stockfish'} {elo}"
+
+
 def generate_pgn(game_id: int, db: Session) -> str:
     """Generate PGN string from stored moves, including standard headers."""
     db_game = db.get(Game, game_id)
@@ -33,8 +38,9 @@ def generate_pgn(game_id: int, db: Session) -> str:
     )
     game_node = chess.pgn.Game()
     if db_game is not None:
-        game_node.headers["White"] = "Player" if db_game.player_color == "white" else "Stockfish"
-        game_node.headers["Black"] = "Stockfish" if db_game.player_color == "white" else "Player"
+        opponent = opponent_name(db_game.engine, db_game.engine_elo)
+        game_node.headers["White"] = "Player" if db_game.player_color == "white" else opponent
+        game_node.headers["Black"] = opponent if db_game.player_color == "white" else "Player"
         game_node.headers["Result"] = db_game.result if db_game.result else "*"
         game_node.headers["Date"] = (
             db_game.played_at.strftime("%Y.%m.%d") if db_game.played_at else "????.??.??"
