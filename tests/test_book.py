@@ -116,3 +116,19 @@ def test_build_writes_readme_with_contents_and_checks(tmp_path):
     assert "[1. Pawn Endings](01-chapter-i-first-principles.md#1-pawn-endings)" in readme
     assert "[Game 1: A. Player – B. Player, Somewhere, 1920 (1-0)](games/01-a-player-vs-b-player-1920.md)" in readme
     assert "2 diagrams" in readme and "Project Gutenberg #1" in readme
+
+
+def test_build_writes_book_json_with_sections_and_drill_lines(tmp_path):
+    import json
+    raw, books, spec = make_raw(tmp_path)
+    build_book(spec, raw, books)
+    data = json.loads((books / "tiny/book.json").read_text())
+    s = data["sections"][0]
+    assert s["section"] == "1" and s["title"] == "Pawn Endings"
+    assert {"kind": "diagram", "fig": "Fig1"} in s["blocks"]
+    assert {"kind": "para", "text": "**Example 1.**—White to play."} in s["blocks"]
+    d = data["diagrams"]["Fig1"]
+    assert d["line_uci"] == ["g2g4", "a7a5"] and d["line_san"] == ["g4", "a5"]
+    assert d["fen"] == FIG1 and d["section"] == "1" and d["kind"] == "position"
+    assert "Fig2" not in data["diagrams"]          # game diagrams aren't drills
+    assert data["title"] == "Tiny Chess" and data["author"] == "A. Author"
