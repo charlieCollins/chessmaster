@@ -14,6 +14,7 @@ from __future__ import annotations
 import csv
 import io
 import os
+import random
 import sqlite3
 from collections import Counter
 from datetime import datetime, timezone
@@ -130,3 +131,67 @@ def write_puzzle_readme(db_path: Path, out: Path) -> None:
         "| Theme | Puzzles |", "|---|---:|",
     ] + [f"| `{t}` | {c:,} |" for t, c in themes]
     Path(out).write_text("\n".join(md) + "\n")
+
+
+_COLS = "p.id, p.fen, p.moves, p.rating, p.popularity, p.plays, p.themes, p.game_url"
+
+
+def _row(r) -> dict:
+    i, f, m, rating, pop, pl, t, u = r
+    return {"id": i, "fen": f, "moves": m.split(), "rating": rating, "popularity": pop, "plays": pl,
+            "themes": t.split(), "game_url": u}
+
+
+_ID_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+
+
+def select_puzzles(db_path: Path, themes: list[str], rating: float, n: int, exclude: set[str],
+                   band: int = 150, max_band: int = 300, min_plays: int = 1000, min_popularity: int = 80,
+                   rng: random.Random | None = None) -> list[dict]:
+    """Up to n random quality puzzles tagged with any of `themes` within rating ± band
+    (± max_band if that finds fewer than n), skipping ids in `exclude`.
+
+    Random index seeks instead of ORDER BY random(): pick a theme, a rating and an id
+    prefix at random, take the next row in the (theme, rating, id) index, then check
+    the quality floor — milliseconds even for themes with a million puzzles."""
+    if not themes or n <= 0:
+        return []
+    rng = rng or random.Random()
+    con = sqlite3.connect(db_path)
+    try:
+        chosen: dict[str, dict] = {}
+        for width in (band, max_band):
+            lo, hi = int(rating - width), int(rating + width)
+            for _ in range(n * 60):
+                if len(chosen) >= n:
+                    break
+                theme = rng.choice(themes)
+                start_id = "".join(rng.choice(_ID_CHARS) for _ in range(3))
+                # Quality floor inside the seek, so a low-quality or excluded row
+                # can't shadow the good puzzles right behind it in the index.
+                rows = con.execute(
+                    f"""SELECT {_COLS} FROM puzzle_themes t JOIN puzzles p ON p.id = t.id
+                        WHERE t.theme = ? AND (t.rating, t.id) >= (?, ?) AND t.rating <= ?
+                          AND p.plays >= ? AND p.popularity >= ?
+                        ORDER BY t.rating, t.id LIMIT ?""",
+                    (theme, rng.randint(lo, hi), start_id, hi, min_plays, min_popularity,
+                     len(exclude) + len(chosen) + 1)).fetchall()
+                r = next((r for r in rows if r[0] not in exclude and r[0] not in chosen), None)
+                if r:
+                    chosen[r[0]] = _row(r)
+            if len(chosen) >= n:
+                break
+    finally:
+        con.close()
+    out = list(chosen.values())
+    rng.shuffle(out)
+    return out
+
+
+def get_puzzle(db_path: Path, puzzle_id: str) -> dict | None:
+    con = sqlite3.connect(db_path)
+    try:
+        r = con.execute(f"SELECT {_COLS} FROM puzzles p WHERE p.id = ?", (puzzle_id,)).fetchone()
+    finally:
+        con.close()
+    return _row(r) if r else None

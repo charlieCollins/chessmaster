@@ -59,3 +59,51 @@ def test_readme_documents_schema_and_theme_counts(tmp_path):
     md = out.read_text()
     assert "4 puzzles" in md and "Moves[0] is the opponent's move" in md
     assert "| `middlegame` | 3 |" in md and "| `fork` | 1 |" in md
+
+
+SPREAD = ("PuzzleId,FEN,Moves,Rating,RatingDeviation,Popularity,NbPlays,Themes,GameUrl,OpeningTags,DailyDate\n"
+          + "".join(f"r{r},8/8/8/8/8/8/8/K6k w - - 0 1,a1a2 h1h2,{r},75,95,5000,{t},u,,\n"
+                    for r, t in [(1100, "fork"), (1200, "fork"), (1300, "fork pin"), (1400, "pin"),
+                                 (1450, "fork"), (1600, "fork"), (1700, "fork")])
+          + "low,8/8/8/8/8/8/8/K6k w - - 0 1,a1a2 h1h2,1300,75,95,50,fork,u,,\n")
+
+
+def spread_db(tmp_path):
+    dump = tmp_path / "s.csv.zst"
+    dump.write_bytes(zstandard.ZstdCompressor().compress(SPREAD.encode()))
+    db = tmp_path / "s.sqlite"
+    build_puzzle_db(dump, db)
+    return db
+
+
+def test_select_within_band(tmp_path):
+    from corpus_tools.puzzles import select_puzzles
+    ids = {p["id"] for p in select_puzzles(spread_db(tmp_path), ["fork"], 1300, 3, set())}
+    assert ids == {"r1200", "r1300", "r1450"}          # 1150–1450, quality floor drops "low"
+
+
+def test_select_widens_when_short(tmp_path):
+    from corpus_tools.puzzles import select_puzzles
+    ids = {p["id"] for p in select_puzzles(spread_db(tmp_path), ["fork"], 1300, 5, set())}
+    assert ids == {"r1100", "r1200", "r1300", "r1450", "r1600"}   # ±300; 1700 still out
+
+
+def test_select_excludes_attempted(tmp_path):
+    from corpus_tools.puzzles import select_puzzles
+    ids = {p["id"] for p in select_puzzles(spread_db(tmp_path), ["fork"], 1300, 3, {"r1300"})}
+    assert "r1300" not in ids and ids <= {"r1100", "r1200", "r1450", "r1600"} and len(ids) == 3
+
+
+def test_select_dedupes_multi_theme_matches(tmp_path):
+    from corpus_tools.puzzles import select_puzzles
+    ps = select_puzzles(spread_db(tmp_path), ["fork", "pin"], 1350, 10, set())
+    ids = [p["id"] for p in ps]
+    assert len(ids) == len(set(ids)) and "r1300" in ids and "r1400" in ids
+
+
+def test_get_puzzle(tmp_path):
+    from corpus_tools.puzzles import get_puzzle
+    db = spread_db(tmp_path)
+    p = get_puzzle(db, "r1300")
+    assert p["rating"] == 1300 and p["moves"] == ["a1a2", "h1h2"] and p["themes"] == ["fork", "pin"]
+    assert get_puzzle(db, "nope") is None
