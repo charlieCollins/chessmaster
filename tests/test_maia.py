@@ -71,3 +71,53 @@ def test_maia_set_level_switches_network_even_for_cached_positions():
         assert switched.policy(after_e4.fen()) == pytest.approx(expected)
     finally:
         fresh.close(); switched.close()
+
+
+def test_choose_accepts_lc0_king_takes_rook_castling():
+    # lc0 reports castling as king-takes-rook (e1h1); standard UCI is e1g1
+    board = chess.Board("r1bqk1nr/pppp1ppp/2n5/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4")
+    assert choose_from_policy(board, {"e1h1": 0.9}, random.Random(0)) == "e1g1"
+
+
+@needs_maia
+def test_maia_castles_when_its_policy_says_so():
+    # 1.e4 e5 2.Nf3 Nc6 3.Bc4 Bc5 — Maia gives O-O ~20%
+    board = chess.Board("r1bqk1nr/pppp1ppp/2n5/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4")
+    eng = MaiaEngine(level=1500, rng=random.Random(7))
+    try:
+        picks = [eng.get_best_move(board.fen()) for _ in range(100)]
+        assert "e1g1" in picks
+    finally:
+        eng.close()
+
+
+@needs_maia
+def test_maia_policy_is_untempered():
+    # lc0 flattens the policy by default (PolicyTemperature 1.359); Maia's
+    # human-move probabilities are the raw (temperature 1.0) policy.
+    import chess.engine
+    from backend.engine import LC0_PATH, MAIA_WEIGHTS_DIR
+    board = chess.Board(); board.push_uci("e2e4")
+    raw = chess.engine.SimpleEngine.popen_uci(
+        [LC0_PATH, f"--weights={MAIA_WEIGHTS_DIR / 'maia-1300.pb.gz'}", "--threads=1", "--policy-softmax-temp=1.0"])
+    eng = MaiaEngine(level=1300)
+    try:
+        raw.configure({"VerboseMoveStats": True})
+        with raw.analysis(board, chess.engine.Limit(nodes=1)) as a:
+            expected = parse_policy([i["string"] for i in a if "string" in i])
+        # board (not FEN) so Maia gets the move history its network expects
+        assert eng.policy(board) == pytest.approx(expected, abs=1e-4)
+    finally:
+        raw.quit(); eng.close()
+
+
+@needs_maia
+def test_maia_policy_uses_move_history():
+    # Maia's net reads recent moves; a bare FEN distorts it badly
+    # (measured: e7e5 57% with history vs 22% from FEN alone after 1.e4)
+    board = chess.Board(); board.push_uci("e2e4")
+    eng = MaiaEngine(level=1300)
+    try:
+        assert eng.policy(board)["e7e5"] > 0.5
+    finally:
+        eng.close()

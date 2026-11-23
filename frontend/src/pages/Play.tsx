@@ -6,6 +6,7 @@ import { API, HINT_DISPLAY_MS, REPLY_DISPLAY_MS, EVAL_DISPLAY_MS, ENGINE_MOVE_MI
 import { useBoardTheme } from "../themes";
 import { type Quality, QUALITIES, classifyMove, qualityTint } from "../classify";
 import { type EngineKind, opponentLabel, encodeOpponent, decodeOpponent } from "../opponents";
+import { formatEval, describeEval, describeMoveDelta } from "../evalText";
 
 /** Returns every square on the path from→to (inclusive). For knights/pawns/kings
  *  there are no intermediates, so just [from, to] is returned. */
@@ -73,21 +74,6 @@ const ELO_OPTIONS: Array<{ value: number; label: string; mode: "skill" | "uci"; 
   { value: 2700, label:  "2700", mode: "uci" },
   { value: 2900, label:  "2900", mode: "uci" },
 ];
-
-// Backend encodes forced mate as ±(MATE_CP − moves to mate)
-const MATE_CP = 10000;
-const MATE_THRESHOLD = 9000;
-
-/** Plain-English size of an advantage, from the player's POV (centipawns). */
-function describeEval(cp: number): string {
-  if (Math.abs(cp) >= MATE_THRESHOLD) return cp > 0 ? "you have a forced mate" : "engine has a forced mate";
-  const size = Math.abs(cp);
-  if (size < 50) return "roughly equal";
-  const who = cp > 0 ? "you" : "engine";
-  if (size < 150) return `slight edge for ${who}`;
-  if (size < 300) return `clear advantage for ${who}`;
-  return cp > 0 ? "you're winning" : "engine is winning";
-}
 
 function engineModeTag(elo: number): string {
   const opt = ELO_OPTIONS.find(o => o.value === elo);
@@ -581,13 +567,6 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
     }
   }
 
-  function fmt(cp: number) {
-    if (Math.abs(cp) >= MATE_THRESHOLD) {
-      const moves = MATE_CP - Math.abs(cp);  // backend sends ±(10000 − moves to mate)
-      return `${cp > 0 ? "" : "-"}M${moves}`;
-    }
-    return cp > 0 ? `+${(cp / 100).toFixed(2)}` : (cp / 100).toFixed(2);
-  }
 
   const colStyle: React.CSSProperties = {
     display: "flex",
@@ -710,8 +689,8 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
   // Player-POV values: positive = good for you, regardless of color
   const pov = state.playerColor === "white" ? 1 : -1;
   const evalPos = state.evalCp !== null ? pov * state.evalCp : null;
-  const lastMoveDelta = state.lastMoveEvals
-    ? pov * (state.lastMoveEvals.after - state.lastMoveEvals.before)
+  const lastMoveText = state.lastMoveEvals
+    ? describeMoveDelta(pov * state.lastMoveEvals.before, pov * state.lastMoveEvals.after)
     : null;
 
   return (
@@ -745,7 +724,7 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
               title="Engine evaluation from your side. +1.00 ≈ the value of one pawn — the advantage can come from material, activity, king safety, etc. M = forced mate in N moves."
               style={{ fontFamily: "var(--font-mono)", fontSize: 18, color: evalPos >= 0 ? "var(--win)" : "var(--loss)", fontWeight: 500, cursor: "help" }}
             >
-              {fmt(evalPos)}
+              {formatEval(evalPos)}
             </div>
             {(() => {
               const clamped = Math.max(-500, Math.min(500, evalPos));
@@ -759,19 +738,16 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
             <div style={{ fontSize: 11, color: "var(--text-dim)", fontFamily: "var(--font-mono)", marginTop: 4 }}>
               {describeEval(evalPos)}
             </div>
-            {lastMoveDelta !== null && (() => {
-              const delta = lastMoveDelta;
+            {lastMoveText !== null && (() => {
+              const tone = lastMoveText.startsWith("▲") ? "var(--good)" : lastMoveText.startsWith("▼") ? "var(--loss)" : "var(--text-dim)";
               return (
                 <>
                   <div style={{ ...labelStyle, marginTop: 10 }}>Last move</div>
                   <span
                     title="How much the evaluation changed because of your move alone"
-                    style={{ color: delta > 0 ? "var(--good)" : delta < 0 ? "var(--loss)" : "var(--text-dim)", fontSize: 11, fontFamily: "var(--font-mono)", cursor: "help" }}
+                    style={{ color: tone, fontSize: 11, fontFamily: "var(--font-mono)", cursor: "help" }}
                   >
-                    {Math.abs(delta) >= MATE_THRESHOLD
-                      ? (delta > 0 ? "▲ found a forced mate" : "▼ allowed a forced mate")
-                      : delta === 0 ? "= no change"
-                      : `${delta > 0 ? "▲" : "▼"} ${Math.abs(delta / 100).toFixed(2)} ${delta > 0 ? "better" : "worse"}`}
+                    {lastMoveText}
                   </span>
                 </>
               );

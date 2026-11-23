@@ -92,3 +92,20 @@ def test_pgn_names_maia_opponent():
     client.post(f"/api/game/{gid}/resign")
     with Session(test_engine) as db:
         assert '[Black "Maia 1300"]' in db.get(Game, gid).pgn
+
+
+@needs_maia
+def test_maia_receives_full_move_history(monkeypatch):
+    from backend.engine import MaiaEngine
+    seen = []
+    real = MaiaEngine.get_best_move
+    def spy(self, position, time_limit=0.1):
+        seen.append(position)
+        return real(self, position, time_limit)
+    monkeypatch.setattr(MaiaEngine, "get_best_move", spy)
+    gid = _start(engine="maia", engine_elo=1300).json()["game_id"]
+    client.post(f"/api/game/{gid}/move", json={"uci": "e2e4"})
+    reply = client.post(f"/api/game/{gid}/move", json={"uci": "g1f3"})
+    assert reply.status_code == 200
+    assert isinstance(seen[-1], chess.Board)
+    assert [m.uci() for m in seen[-1].move_stack][:3] == ["e2e4", seen[0].move_stack[1].uci(), "g1f3"]

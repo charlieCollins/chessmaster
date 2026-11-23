@@ -130,7 +130,7 @@ def start_game(req: StartGameRequest, db: Session = Depends(get_db)):
     if req.player_color == "black":
         try:
             engine_first_move = run_game_engine(
-                req.engine, req.engine_elo, lambda eng: eng.get_best_move(board.fen(), time_limit=ENGINE_MOVE_TIME)
+                req.engine, req.engine_elo, lambda eng: eng.get_best_move(board, time_limit=ENGINE_MOVE_TIME)
             )
         except Exception as e:
             raise HTTPException(500, f"Engine error: {e}")
@@ -229,7 +229,9 @@ def make_move(game_id: int, req: MoveRequest, db: Session = Depends(get_db)):
     fen_after_player = board.fen()
     try:
         engine_uci = run_game_engine(
-            game.engine or "stockfish", game.engine_elo, lambda eng: eng.get_best_move(fen_after_player, time_limit=ENGINE_MOVE_TIME)
+            # Full board (with move history), not just the FEN: Maia's network reads
+            # recent moves, and both engines can then see repetitions.
+            game.engine or "stockfish", game.engine_elo, lambda eng: eng.get_best_move(board, time_limit=ENGINE_MOVE_TIME)
         )
     except Exception as e:
         raise HTTPException(500, f"Engine error: {e}")

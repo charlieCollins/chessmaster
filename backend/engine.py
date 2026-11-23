@@ -23,6 +23,12 @@ def _white_cp(score: chess.engine.PovScore) -> float:
     return float(score.white().score(mate_score=MATE_CP))
 
 
+def _as_board(position: "str | chess.Board") -> chess.Board:
+    """A private Board for a FEN or a Board (a Board keeps its move history,
+    which lets engines see repetitions and lets Maia's network read recent moves)."""
+    return position.copy() if isinstance(position, chess.Board) else chess.Board(position)
+
+
 def terminal_eval(board: chess.Board) -> float:
     """Eval for a finished game: ±MATE_CP for checkmate, 0 for any draw."""
     outcome = board.outcome()
@@ -103,8 +109,8 @@ class ChessEngine:
             return chess.engine.Limit(time=time_limit, depth=self._depth_limit)
         return chess.engine.Limit(time=time_limit)
 
-    def get_best_move(self, fen: str, time_limit: float = 0.1) -> Optional[str]:
-        board = chess.Board(fen)
+    def get_best_move(self, position: "str | chess.Board", time_limit: float = 0.1) -> Optional[str]:
+        board = _as_board(position)
         result = self._engine.play(board, self._limit(time_limit))
         if result.move is None:
             return None
@@ -175,8 +181,15 @@ def parse_policy(info_strings: list[str]) -> dict[str, float]:
 def choose_from_policy(board: chess.Board, policy: dict[str, float], rng: random.Random) -> str | None:
     """Sample a legal move among those Maia rates >= MAIA_POLICY_FLOOR, weighted by
     probability; else the most likely legal move; None if no legal move is listed."""
-    legal = {m.uci() for m in board.legal_moves}
-    candidates = {u: p for u, p in policy.items() if u in legal}
+    # Normalise to standard UCI via the board: lc0 reports castling as
+    # king-takes-rook (e1h1), which parse_uci maps to e1g1. Illegal/garbage → skipped.
+    candidates: dict[str, float] = {}
+    for u, p in policy.items():
+        try:
+            move = board.parse_uci(u)
+        except ValueError:
+            continue
+        candidates[move.uci()] = candidates.get(move.uci(), 0.0) + p
     if not candidates:
         return None
     likely = {u: p for u, p in candidates.items() if p >= MAIA_POLICY_FLOOR}
@@ -202,7 +215,9 @@ class MaiaEngine:
             [LC0_PATH, f"--weights={_weights_file(level)}", "--threads=1"],
             stderr=open(os.devnull, "w"),
         )
-        self._engine.configure({"VerboseMoveStats": True})
+        # Raw policy (lc0 defaults to a flattening temperature of 1.359), so we
+        # sample Maia's actual human-move probabilities.
+        self._engine.configure({"VerboseMoveStats": True, "PolicyTemperature": 1.0})
         self.level = level
         # python-chess sends `ucinewgame` whenever this token changes; lc0 clears
         # its cache of network results on ucinewgame, which a weights switch needs.
@@ -216,21 +231,23 @@ class MaiaEngine:
             self.level = level
             self._game = object()  # drop results cached from the previous net
 
-    def policy(self, fen: str) -> dict[str, float]:
-        """Maia's move probabilities for `fen` ({uci: 0–1}); empty if unreadable."""
+    def policy(self, position: "str | chess.Board") -> dict[str, float]:
+        """Maia's move probabilities ({uci: 0–1}); empty if unreadable.
+        Pass a Board with its move history when you have one — Maia's network
+        uses recent moves, and a bare FEN distorts its policy badly."""
         strings: list[str] = []
-        with self._engine.analysis(chess.Board(fen), chess.engine.Limit(nodes=1), game=self._game) as analysis:
+        with self._engine.analysis(_as_board(position), chess.engine.Limit(nodes=1), game=self._game) as analysis:
             for info in analysis:
                 if "string" in info:
                     strings.append(info["string"])
         return parse_policy(strings)
 
-    def get_best_move(self, fen: str, time_limit: float = 0.1) -> Optional[str]:
-        """Pick Maia's move for `fen`. `time_limit` is ignored (always 1 node)."""
-        board = chess.Board(fen)
+    def get_best_move(self, position: "str | chess.Board", time_limit: float = 0.1) -> Optional[str]:
+        """Pick Maia's move. `time_limit` is ignored (always 1 node)."""
+        board = _as_board(position)
         if board.is_game_over():
             return None
-        move = choose_from_policy(board, self.policy(fen), self._rng)
+        move = choose_from_policy(board, self.policy(board), self._rng)
         if move is None:
             played = self._engine.play(board, chess.engine.Limit(nodes=1), game=self._game).move
             move = played.uci() if played else None
