@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { OpeningKey } from "../data/openings";
 import { getTopics, type TopicSummary, type TopicsResponse } from "./learn/api";
 import { OpeningDetail, OpeningsHub } from "./learn/Openings";
+import ReviewSession from "./learn/ReviewSession";
 import TopicLesson from "./learn/TopicLesson";
 
 // Chess glyphs + a few symbols the UI font is known to have (others render as empty boxes)
@@ -83,6 +84,7 @@ export default function Learn() {
   const toHub = () => setView({ kind: "hub" });
 
   if (view.kind === "topic") return <TopicLesson slug={view.slug} onBack={toHub} />;
+  if (view.kind === "review") return <ReviewSession onBack={toHub} />;
   if (view.kind === "openings" && !view.key)
     return <OpeningsHub onSelect={k => setView({ kind: "openings", key: k })} onBack={toHub} />;
   if (view.kind === "openings" && view.key)
