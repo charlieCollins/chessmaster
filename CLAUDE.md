@@ -45,6 +45,7 @@ pytest -v
 - `frontend/src/App.tsx` — Routing shell (Home / Play / Learn / Review pages)
 - `frontend/src/themes.ts` — Theme definitions: Classic, Forest, Ocean, Night, Autumn, Obsidian; maps theme names to CSS variable overrides
 - `frontend/src/config.ts` — Frontend config: `API` base (default `""` = same origin; override via `VITE_API_BASE`) and UI timing constants
+- `frontend/src/opponents.ts` — `opponentLabel` ("Maia 1300" / "Stockfish ~1000"), picker value encoding
 - `frontend/src/classify.ts` — Win%-based move classification for live Play highlights (mirrors `game_utils.py`)
 - `frontend/src/pages/Home.tsx` — Dashboard: win/loss stats + completed game history table
 - `frontend/src/pages/Play.tsx` — Interactive board, play vs engine, color/ELO selection, eval bar, hint, best-reply
@@ -56,7 +57,8 @@ pytest -v
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/game` | Start new game (`player_color`, `engine_elo`) |
+| GET | `/api/engines` | Opponent families available: `{maia: {available, levels}}` |
+| POST | `/api/game` | Start new game (`player_color`, `engine` = `stockfish`\|`maia`, `engine_elo`; Maia levels 1100–1900, 400 if Maia not installed) |
 | GET | `/api/game/{id}` | Get game state + moves (+ per-side `accuracy` once analyzed) |
 | POST | `/api/game/{id}/move` | Make a move. Returns engine reply, `eval_cp` (after your move), `engine_eval_cp` (after the reply), `termination`. Nothing is saved if the engine fails. |
 | POST | `/api/game/{id}/takeback` | Undo last two plies (marks game `assisted=1`) |
@@ -72,26 +74,28 @@ pytest -v
 
 ## Engine Strength Modes
 
-Two modes depending on ELO value:
+Opponent = `games.engine` + `games.engine_elo`.
 
-| Range | Mode | Notes |
+| Engine / range | Mode | Notes |
 |-------|------|-------|
-| <1320 | `Skill Level` 0–20 | Move randomization; approximate ELOs only |
-| 1320–3190 | `UCI_Elo` | Stockfish-calibrated at longer time controls; plays somewhat weaker at our 0.1s/move |
+| Maia 1100–1900 | lc0 + Maia net, 1 node | Human-trained (Lichess ratings). Samples among moves Maia gives ≥5% probability. Default in UI. |
+| Stockfish <1320 | `Skill Level` 0–20 | Move randomization; approximate ELOs only |
+| Stockfish 1320–3190 | `UCI_Elo` | Stockfish-calibrated at longer time controls; plays somewhat weaker at our 0.1s/move |
 
 Skill Level mapping (`_SKILL_BY_ELO` in `engine.py`):
 - ≤1000 → Skill 0, ≤1100 → Skill 3, ≤1200 → Skill 6, ≤1300 → Skill 9 (UI options: 1000/1100/1200/1300)
 
-**Important**: Skill Level evaluates at full strength then randomly degrades — inconsistent, not human-like. UCI_Elo is calibrated and consistent.
+**Important**: Stockfish's Elo scale isn't human ratings: measured 2026-11-22, Skill 0 ≈ 1030 on Stockfish's scale, yet it almost never hangs material, so it plays far above a human 1000. That's why Maia exists.
 
-Two `EngineSlot`s in `main.py` (each lock-guarded, lazily started, restarted once on crash):
-- `_game_engine` (via `run_game_engine(elo, fn)`) — strength-limited, ONLY chooses the engine's moves
+Three `EngineSlot`s in `main.py` (each lock-guarded, lazily started, restarted once on crash):
+- `_game_engine` / `_maia_engine` (via `run_game_engine(engine, elo, fn)`) — opponent, ONLY chooses the opponent's moves
 - `_hint_engine` (via `run_hint_engine(fn)`) — full strength; every eval/best move shown to the player
 
 ## Key Dependencies
 
 - `chess` (python-chess) — board logic, FEN/PGN, move validation, UCI engine protocol
 - Stockfish binary — `STOCKFISH_PATH` env var if set, else `shutil.which("stockfish")`, else bare `"stockfish"` (fails clearly if not installed)
+- lc0 + Maia weights (optional) — `LC0_PATH` env or `lc0` on PATH (locally `~/.local/bin/lc0` → `~/.local/src/lc0/build/release/lc0`); weights `maia-{1100..1900}.pb.gz` in `MAIA_WEIGHTS_DIR` (default `~/.local/share/maia`). Without them Maia is hidden.
 - `react-chessboard` v5 — interactive board component (uses `options={{...}}` prop, not flat props)
 - `chess.js` — client-side FEN reconstruction for move replay in Review and Learn pages
 
@@ -130,6 +134,7 @@ games
   result        TEXT        -- "1-0", "0-1", "1/2-1/2", "*"
   player_color  TEXT        -- "white" | "black"
   engine_elo    INTEGER
+  engine        TEXT        -- "stockfish" (default) | "maia"
   played_at     DATETIME
   source        TEXT        -- game source; default "local" (reserved for future PGN import)
   analyzed      INTEGER     -- 0 | 1

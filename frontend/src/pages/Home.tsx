@@ -1,12 +1,14 @@
 // frontend/src/pages/Home.tsx
 import { useState, useEffect, useRef } from "react";
 import { API } from "../config";
+import { type EngineKind, opponentLabel } from "../opponents";
 
 interface GameRow {
   game_id: number;
   result: string;
   player_color: "white" | "black";
   engine_elo: number;
+  engine: EngineKind;
   played_at: string | null;
   analyzed: boolean;
   assisted: boolean;
@@ -195,7 +197,7 @@ export default function Home({ onPlay, onReview }: HomeProps) {
               <tr>
                 <th>Date</th>
                 <th>Color</th>
-                <th>vs ELO</th>
+                <th>Opponent</th>
                 <th>Result</th>
                 <th>Moves</th>
                 <th>Accuracy</th>
@@ -215,7 +217,7 @@ export default function Home({ onPlay, onReview }: HomeProps) {
                   <tr key={row.game_id}>
                     <td className="mono dim">{fmtDate(row.played_at)}</td>
                     <td style={{ textTransform: "capitalize" }}>{row.player_color}</td>
-                    <td className="mono">{row.engine_elo}</td>
+                    <td className="mono">{opponentLabel(row.engine, row.engine_elo)}</td>
                     <td style={{ color: outcomeColor, fontWeight: 600 }}>{outcome}</td>
                     <td className="mono dim">{Math.ceil(row.move_count / 2)}</td>
                     <td className="mono dim" style={{ fontSize: 12 }}>{row.accuracy !== null ? `${Math.round(row.accuracy)}%` : "—"}</td>

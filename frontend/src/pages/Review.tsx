@@ -4,6 +4,7 @@ import { API, ANALYZE_ESTIMATE_MS, ANALYZE_TICK_MS } from "../config";
 import { useBoardTheme } from "../themes";
 import { Chessboard } from "react-chessboard";
 import { Chess } from "chess.js";
+import { type EngineKind, opponentLabel } from "../opponents";
 
 const COLORS: Record<string, string> = {
   best:        "var(--best)",
@@ -104,6 +105,7 @@ interface GameData {
   result: string;
   player_color: string;
   engine_elo: number;
+  engine: EngineKind;
   analyzed: boolean;
   accuracy: { white: AccuracySummary | null; black: AccuracySummary | null } | null;
   moves: MoveRecord[];
@@ -376,7 +378,7 @@ export default function Review({ gameId }: ReviewProps) {
           }}>
             <RatingCol label="You" acc={accuracy} isYou />
             <div style={{ width: 1, background: "var(--border)", margin: "12px 0" }} />
-            <RatingCol label="Opponent" sublabel={`(${game.engine_elo < 1320 ? "~" : ""}${game.engine_elo} elo)`} acc={oppAccuracy} />
+            <RatingCol label="Opponent" sublabel={`(${opponentLabel(game.engine, game.engine_elo)})`} acc={oppAccuracy} />
             <div style={{ width: 1, background: "var(--border)", margin: "12px 0" }} />
             <div style={{ flex: 1, minWidth: 120, padding: "12px 16px", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center" }}>
               <div style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--text-dim)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>Overall</div>

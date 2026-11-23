@@ -5,6 +5,7 @@ import { Chess, type Square } from "chess.js";
 import { API, HINT_DISPLAY_MS, REPLY_DISPLAY_MS, EVAL_DISPLAY_MS, ENGINE_MOVE_MIN_MS } from "../config";
 import { useBoardTheme } from "../themes";
 import { type Quality, QUALITIES, classifyMove, qualityTint } from "../classify";
+import { type EngineKind, opponentLabel, encodeOpponent, decodeOpponent } from "../opponents";
 
 /** Returns every square on the path from→to (inclusive). For knights/pawns/kings
  *  there are no intermediates, so just [from, to] is returned. */
@@ -43,6 +44,7 @@ interface GameState {
   gameId: number;
   fen: string;
   playerColor: "white" | "black";
+  engine: EngineKind;
   engineElo: number;
   gameOver: boolean;
   result: string | null;
@@ -71,6 +73,21 @@ const ELO_OPTIONS: Array<{ value: number; label: string; mode: "skill" | "uci"; 
   { value: 2700, label:  "2700", mode: "uci" },
   { value: 2900, label:  "2900", mode: "uci" },
 ];
+
+// Backend encodes forced mate as ±(MATE_CP − moves to mate)
+const MATE_CP = 10000;
+const MATE_THRESHOLD = 9000;
+
+/** Plain-English size of an advantage, from the player's POV (centipawns). */
+function describeEval(cp: number): string {
+  if (Math.abs(cp) >= MATE_THRESHOLD) return cp > 0 ? "you have a forced mate" : "engine has a forced mate";
+  const size = Math.abs(cp);
+  if (size < 50) return "roughly equal";
+  const who = cp > 0 ? "you" : "engine";
+  if (size < 150) return `slight edge for ${who}`;
+  if (size < 300) return `clear advantage for ${who}`;
+  return cp > 0 ? "you're winning" : "engine is winning";
+}
 
 function engineModeTag(elo: number): string {
   const opt = ELO_OPTIONS.find(o => o.value === elo);
@@ -106,7 +123,26 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
   const [autoEval, setAutoEval]       = useState(true);
   const autoEvalRef                   = useRef(true);
   const [colorChoice, setColorChoice] = useState<"white" | "black">("white");
-  const [eloChoice, setEloChoice]     = useState(1000);
+  // Opponent picker value, e.g. "maia:1300" / "stockfish:1000"
+  const [opponentChoice, setOpponentChoice] = useState(encodeOpponent("stockfish", 1000));
+  const [maiaLevels, setMaiaLevels] = useState<number[]>([]);   // empty = Maia not available
+  const opponentTouched = useRef(false);
+
+  // Offer Maia (human-like) opponents when the server has them; default to Maia 1300.
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API}/api/engines`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.maia?.available) return;
+        setMaiaLevels(data.maia.levels);
+        if (!opponentTouched.current && data.maia.levels.includes(1300)) {
+          setOpponentChoice(encodeOpponent("maia", 1300));
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   // FIX H2: selectedSquare typed as Square | null
   const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
   const [hintMove, setHintMove] = useState<{ from_sq: string; to_sq: string } | null>(null);
@@ -181,13 +217,14 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
 
   // FIX 6: error handling in startGame
   async function startGame() {
+    const chosen = decodeOpponent(opponentChoice);
     setLoading(true);
     setStartError(null);
     try {
       const res = await fetch(`${API}/api/game`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ player_color: colorChoice, engine_elo: eloChoice }),
+        body: JSON.stringify({ player_color: colorChoice, engine: chosen.engine, engine_elo: chosen.elo }),
       });
       if (!res.ok) throw new Error("Server error");
       const data = await res.json();
@@ -195,7 +232,8 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
         gameId: data.game_id,
         fen: data.fen,
         playerColor: colorChoice,
-        engineElo: eloChoice,
+        engine: chosen.engine,
+        engineElo: chosen.elo,
         gameOver: false,
         result: null,
         termination: null,
@@ -544,6 +582,10 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
   }
 
   function fmt(cp: number) {
+    if (Math.abs(cp) >= MATE_THRESHOLD) {
+      const moves = MATE_CP - Math.abs(cp);  // backend sends ±(10000 − moves to mate)
+      return `${cp > 0 ? "" : "-"}M${moves}`;
+    }
     return cp > 0 ? `+${(cp / 100).toFixed(2)}` : (cp / 100).toFixed(2);
   }
 
@@ -602,10 +644,10 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
         </div>
 
         <div style={cardStyle}>
-          <div style={labelStyle}>Engine strength</div>
+          <div style={labelStyle}>Opponent</div>
           <select
-            value={eloChoice}
-            onChange={(e) => setEloChoice(Number(e.target.value))}
+            value={opponentChoice}
+            onChange={(e) => { opponentTouched.current = true; setOpponentChoice(e.target.value); }}
             style={{
               width: "100%",
               background: "var(--raised)",
@@ -618,22 +660,32 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
               cursor: "pointer",
             }}
           >
-            <optgroup label="Skill Level (approximate)">
+            {maiaLevels.length > 0 && (
+              <optgroup label="Human-like (Maia)">
+                {maiaLevels.map(lv => (
+                  <option key={`maia-${lv}`} value={encodeOpponent("maia", lv)}>Maia {lv}</option>
+                ))}
+              </optgroup>
+            )}
+            <optgroup label="Stockfish · Skill Level (approximate)">
               {ELO_OPTIONS.filter(o => o.mode === "skill").map(o => (
-                <option key={o.value} value={o.value}>{o.label} — Skill {o.skill}/20</option>
+                <option key={o.value} value={encodeOpponent("stockfish", o.value)}>Stockfish {o.label} — Skill {o.skill}/20</option>
               ))}
             </optgroup>
-            <optgroup label="UCI ELO (Stockfish)">
+            <optgroup label="Stockfish · UCI ELO">
               {ELO_OPTIONS.filter(o => o.mode === "uci").map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
+                <option key={o.value} value={encodeOpponent("stockfish", o.value)}>Stockfish {o.label}</option>
               ))}
             </optgroup>
           </select>
           {(() => {
-            const opt = ELO_OPTIONS.find(o => o.value === eloChoice);
+            const chosen = decodeOpponent(opponentChoice);
+            const opt = ELO_OPTIONS.find(o => o.value === chosen.elo);
             return (
               <div style={{ ...labelStyle, marginBottom: 0, letterSpacing: "0.04em" }}>
-                {opt?.mode === "skill"
+                {chosen.engine === "maia"
+                  ? "trained on human games · plays human-style mistakes"
+                  : opt?.mode === "skill"
                   ? `Skill ${opt.skill}/20 · randomized, not calibrated`
                   : "Stockfish UCI_Elo · rating is approximate at fast move times"}
               </div>
@@ -672,12 +724,12 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
           <div style={{ fontFamily: "var(--font-mono)", color: "var(--text-bright)", textTransform: "capitalize" }}>
             {state.playerColor}
           </div>
-          <div style={{ ...labelStyle, marginTop: 10 }}>Engine</div>
+          <div style={{ ...labelStyle, marginTop: 10 }}>Opponent</div>
           <div style={{ fontFamily: "var(--font-mono)", color: "var(--text-bright)" }}>
-            {state.engineElo < 1320 ? "~" : ""}{state.engineElo}
+            {opponentLabel(state.engine, state.engineElo)}
           </div>
           <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-dim)", marginTop: 1 }}>
-            {engineModeTag(state.engineElo)}
+            {state.engine === "maia" ? "human-like" : engineModeTag(state.engineElo)}
           </div>
           {state.assisted && (
             <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-dim)", marginTop: 6 }}>
@@ -689,7 +741,10 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
         {evalPos !== null && (
           <div style={{ padding: "12px 14px", background: "var(--surface)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
             <div style={labelStyle}>Position</div>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: 18, color: evalPos >= 0 ? "var(--win)" : "var(--loss)", fontWeight: 500 }}>
+            <div
+              title="Engine evaluation from your side. +1.00 ≈ the value of one pawn — the advantage can come from material, activity, king safety, etc. M = forced mate in N moves."
+              style={{ fontFamily: "var(--font-mono)", fontSize: 18, color: evalPos >= 0 ? "var(--win)" : "var(--loss)", fontWeight: 500, cursor: "help" }}
+            >
               {fmt(evalPos)}
             </div>
             {(() => {
@@ -702,15 +757,21 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
               );
             })()}
             <div style={{ fontSize: 11, color: "var(--text-dim)", fontFamily: "var(--font-mono)", marginTop: 4 }}>
-              {evalPos === 0 ? "equal" : evalPos > 0 ? "you're better" : "engine is better"} (pawns)
+              {describeEval(evalPos)}
             </div>
             {lastMoveDelta !== null && (() => {
               const delta = lastMoveDelta;
               return (
                 <>
                   <div style={{ ...labelStyle, marginTop: 10 }}>Last move</div>
-                  <span style={{ color: delta > 0 ? "var(--good)" : delta < 0 ? "var(--loss)" : "var(--text-dim)", fontSize: 11, fontFamily: "var(--font-mono)" }}>
-                    {delta > 0 ? "▲" : delta < 0 ? "▼" : "="} {Math.abs(delta / 100).toFixed(2)} {delta > 0 ? "pawn gain" : delta < 0 ? "pawn loss" : "pawns"}
+                  <span
+                    title="How much the evaluation changed because of your move alone"
+                    style={{ color: delta > 0 ? "var(--good)" : delta < 0 ? "var(--loss)" : "var(--text-dim)", fontSize: 11, fontFamily: "var(--font-mono)", cursor: "help" }}
+                  >
+                    {Math.abs(delta) >= MATE_THRESHOLD
+                      ? (delta > 0 ? "▲ found a forced mate" : "▼ allowed a forced mate")
+                      : delta === 0 ? "= no change"
+                      : `${delta > 0 ? "▲" : "▼"} ${Math.abs(delta / 100).toFixed(2)} ${delta > 0 ? "better" : "worse"}`}
                   </span>
                 </>
               );
