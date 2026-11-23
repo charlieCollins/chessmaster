@@ -8,10 +8,11 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 import chess
 
-from .db import get_db, Game, Move, init_db
+from .db import get_db, Game, Move, init_db, SessionLocal
 from .engine import ChessEngine, EngineSlot, MaiaEngine, maia_available
 from .game_utils import reconstruct_board, generate_pgn, accuracy_summary
 from .analysis import analyze_game
+from .game_files import write_game_file, delete_game_file, write_missing_game_files
 from .config import CORS_ORIGINS, HINT_TIME, ENGINE_MOVE_TIME, LIVE_EVAL_TIME, DEFAULT_ENGINE_ELO, MAIA_LEVELS
 
 
@@ -54,6 +55,8 @@ def _live_eval(fen: str) -> float | None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    with SessionLocal() as db:   # every game gets a games/<id>.pgn, old ones included
+        write_missing_game_files(db)
     yield
     _game_engine.close()
     _hint_engine.close()
@@ -146,6 +149,7 @@ def start_game(req: StartGameRequest, db: Session = Depends(get_db)):
     if engine_first_move:
         db.add(Move(game_id=game.id, ply=1, uci=engine_first_move, san=first_san))
     db.commit()
+    write_game_file(game.id, db)
 
     return {
         "game_id": game.id,
@@ -153,6 +157,7 @@ def start_game(req: StartGameRequest, db: Session = Depends(get_db)):
         "player_color": req.player_color,
         "engine_elo": req.engine_elo,
         "engine": req.engine,
+        "public_id": game.public_id,
         "engine_first_move": engine_first_move,
     }
 
@@ -176,6 +181,7 @@ def get_game(game_id: int, db: Session = Depends(get_db)):
         "player_color": game.player_color,
         "engine_elo": game.engine_elo,
         "engine": game.engine or "stockfish",
+        "public_id": game.public_id,
         "analyzed": bool(game.analyzed),
         "assisted": bool(game.assisted),
         "accuracy": {
@@ -222,6 +228,7 @@ def make_move(game_id: int, req: MoveRequest, db: Session = Depends(get_db)):
         db.add(player_move)
         db.flush()
         ended = _check_and_end_game(game, board, game_id, db)
+        write_game_file(game_id, db)
         return {"fen": board.fen(), "engine_move": None, "eval_cp": None, "engine_eval_cp": None, **ended}
 
     # Pick the engine's reply before persisting anything: if the engine fails,
@@ -251,6 +258,7 @@ def make_move(game_id: int, req: MoveRequest, db: Session = Depends(get_db)):
     ended = _check_and_end_game(game, board, game_id, db)
     if not ended:
         db.commit()
+    write_game_file(game_id, db)
     engine_eval_cp = _live_eval(board.fen())
 
     return {
@@ -269,9 +277,11 @@ def delete_game(game_id: int, db: Session = Depends(get_db)):
     game = db.get(Game, game_id)
     if not game:
         raise HTTPException(404, "Game not found")
+    public_id = game.public_id
     db.query(Move).filter(Move.game_id == game_id).delete()
     db.delete(game)
     db.commit()
+    delete_game_file(public_id)
     return {"status": "deleted"}
 
 
@@ -289,6 +299,7 @@ def analyze(game_id: int, db: Session = Depends(get_db)):
         analyze_game(game_id, db)
     except Exception as e:
         raise HTTPException(500, f"Analysis failed: {e}")
+    write_game_file(game_id, db)
     return {"status": "analyzed", "game_id": game_id}
 
 
@@ -325,6 +336,7 @@ def list_games(db: Session = Depends(get_db)):
             "player_color": g.player_color,
             "engine_elo": g.engine_elo,
             "engine": g.engine or "stockfish",
+            "public_id": g.public_id,
             "played_at": g.played_at.isoformat() + "Z" if g.played_at else None,
             "analyzed": bool(g.analyzed),
             "assisted": bool(g.assisted),
@@ -431,6 +443,7 @@ def takeback(game_id: int, db: Session = Depends(get_db)):
     db.query(Move).filter(Move.game_id == game_id, Move.ply >= max_ply - 1).delete()
     game.assisted = 1
     db.commit()
+    write_game_file(game_id, db)
     board = reconstruct_board(game_id, db)
     return {"fen": board.fen()}
 
@@ -445,4 +458,5 @@ def resign_game(game_id: int, db: Session = Depends(get_db)):
     game.result = "0-1" if game.player_color == "white" else "1-0"
     game.pgn = generate_pgn(game_id, db)
     db.commit()
+    write_game_file(game_id, db)
     return {"result": game.result}

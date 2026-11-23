@@ -34,12 +34,26 @@ source .venv/bin/activate
 pytest -v
 ```
 
+## Game IDs & game files (read this when the user mentions a game)
+
+Every game has a short public ID like `k7m2qx` (shown in Play, Review and Home, click to copy).
+The full game is kept in **`games/<id>.pgn`** (git-ignored; `GAMES_DIR` env overrides), rewritten on
+start, every move, takeback, resign and analysis — so it's current even mid-game.
+
+**When the user says "game k7m2qx …" / "teach me from k7m2qx", read `games/k7m2qx.pgn` first.**
+It's standard PGN: headers include `GameId`, `White`/`Black` (`Player` vs e.g. `Maia 1300`),
+`Result`, `Termination`, and after analysis `WhiteAccuracy`/`BlackAccuracy`. After analysis each move
+has `{ [%eval 0.35] }` (White POV, pawns; `#N` = mate), and flagged moves carry NAGs
+`$6`=?! inaccuracy, `$2`=? mistake, `$4`=?? blunder plus a comment like `Mistake. Best was Nf3.`
+Use python-chess (`chess.pgn.read_game`) to replay positions when explaining.
+
 ## Architecture
 
 - `backend/main.py` — FastAPI app, routes, lifespan (engine init/shutdown)
 - `backend/engine.py` — Stockfish wrapper (`get_best_move`, `evaluate`, `full_strength` param) + `EngineSlot` (lock + auto-restart after a Stockfish crash)
 - `backend/db.py` — SQLAlchemy models: Game, Move. SQLite at `chess.db` (env: `DATABASE_URL`)
 - `backend/game_utils.py` — `reconstruct_board`, `generate_pgn`, win%-based `classify_move`, shared `accuracy_summary`
+- `backend/game_files.py` — `games/<public_id>.pgn` per game: `annotated_pgn`, `write_game_file`, `write_missing_game_files` (run at startup)
 - `backend/analysis.py` — Post-game analysis: iterates all moves, classifies each with full-strength Stockfish
 - `backend/config.py` — App configuration: timing constants (ENGINE_MOVE_TIME, HINT_TIME, ANALYSIS_TIME, LIVE_EVAL_TIME), DEFAULT_ENGINE_ELO, CORS_ORIGINS
 - `frontend/src/App.tsx` — Routing shell (Home / Play / Learn / Review pages)
@@ -64,7 +78,7 @@ pytest -v
 | POST | `/api/game/{id}/takeback` | Undo last two plies (marks game `assisted=1`) |
 | POST | `/api/game/{id}/resign` | Resign the game |
 | DELETE | `/api/game/{id}` | Delete a game and its moves |
-| POST | `/api/game/{id}/analyze` | Run post-game Stockfish analysis (~4–30s (depends on game length)) |
+| POST | `/api/game/{id}/analyze` | Run post-game Stockfish analysis (~4–30s). Idempotent: returns `already_analyzed` if done (Play auto-analyzes at game end) |
 | GET | `/api/game/{id}/hint` | Best move for current position (marks game `assisted=1`) |
 | POST | `/api/engine/best` | Best move for any FEN (`{fen}`) — NOT tracked as assisted; rejects impossible positions (they crash Stockfish) |
 | GET | `/api/games` | List completed games (with player `accuracy`) |
@@ -135,6 +149,7 @@ games
   player_color  TEXT        -- "white" | "black"
   engine_elo    INTEGER
   engine        TEXT        -- "stockfish" (default) | "maia"
+  public_id     TEXT UNIQUE -- short ID (e.g. "k7m2qx"); names games/<id>.pgn; backfilled by init_db()
   played_at     DATETIME
   source        TEXT        -- game source; default "local" (reserved for future PGN import)
   analyzed      INTEGER     -- 0 | 1

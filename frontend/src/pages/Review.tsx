@@ -6,6 +6,7 @@ import { Chessboard } from "react-chessboard";
 import { Chess } from "chess.js";
 import { type EngineKind, opponentLabel } from "../opponents";
 import { grade, estimateElo, type AccuracySummary } from "../ratings";
+import GameIdBadge from "../components/GameIdBadge";
 
 const COLORS: Record<string, string> = {
   best:        "var(--best)",
@@ -71,6 +72,7 @@ interface MoveRecord {
 
 interface GameData {
   game_id: number;
+  public_id: string | null;
   result: string;
   player_color: string;
   engine_elo: number;
@@ -303,6 +305,7 @@ export default function Review({ gameId }: ReviewProps) {
         <h2 style={{ fontFamily: "var(--font-display)", fontSize: 20, color: "var(--text-bright)" }}>
           Game Review
         </h2>
+        <GameIdBadge id={game.public_id} size={13} />
         <span className="mono dim" style={{ fontSize: 13 }}>Result: {game.result}</span>
         <span className="mono dim" style={{ fontSize: 13, textTransform: "capitalize" }}>Playing as: {YOU}</span>
 

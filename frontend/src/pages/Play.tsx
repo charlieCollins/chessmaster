@@ -8,6 +8,7 @@ import { type Quality, QUALITIES, classifyMove, qualityTint } from "../classify"
 import { type EngineKind, opponentLabel, encodeOpponent, decodeOpponent } from "../opponents";
 import { formatEval, describeEval, describeMoveDelta } from "../evalText";
 import { type AccuracySummary, describeResult, grade, estimateElo } from "../ratings";
+import GameIdBadge from "../components/GameIdBadge";
 
 /** Returns every square on the path from→to (inclusive). For knights/pawns/kings
  *  there are no intermediates, so just [from, to] is returned. */
@@ -44,6 +45,8 @@ interface PlayProps {
 
 interface GameState {
   gameId: number;
+  /** Short public ID ("k7m2qx"); the game is saved as games/<publicId>.pgn */
+  publicId: string | null;
   fen: string;
   playerColor: "white" | "black";
   engine: EngineKind;
@@ -246,6 +249,7 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
       const data = await res.json();
       setState({
         gameId: data.game_id,
+        publicId: data.public_id ?? null,
         fen: data.fen,
         playerColor: colorChoice,
         engine: chosen.engine,
@@ -729,6 +733,8 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
       {/* ── Left: Game State ──────────────────────── */}
       <div style={{ ...colStyle, width: 160 }}>
         <div style={{ padding: "12px 14px", background: "var(--surface)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
+          <div style={labelStyle}>Game</div>
+          <div style={{ marginBottom: 10 }}><GameIdBadge id={state.publicId} /></div>
           <div style={labelStyle}>Playing as</div>
           <div style={{ fontFamily: "var(--font-mono)", color: "var(--text-bright)", textTransform: "capitalize" }}>
             {state.playerColor}

@@ -10,6 +10,7 @@ build/
 chess.db
 chess.db-wal
 chess.db-shm
+games/
 frontend/dist/
 .chess.pids
 .superpowers/

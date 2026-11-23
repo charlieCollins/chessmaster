@@ -1,10 +1,12 @@
 // frontend/src/pages/Home.tsx
 import { useState, useEffect, useRef } from "react";
 import { API } from "../config";
+import GameIdBadge from "../components/GameIdBadge";
 import { type EngineKind, opponentLabel } from "../opponents";
 
 interface GameRow {
   game_id: number;
+  public_id: string | null;
   result: string;
   player_color: "white" | "black";
   engine_elo: number;
@@ -195,6 +197,7 @@ export default function Home({ onPlay, onReview }: HomeProps) {
           <table className="data-table">
             <thead>
               <tr>
+                <th>ID</th>
                 <th>Date</th>
                 <th>Color</th>
                 <th>Opponent</th>
@@ -215,6 +218,7 @@ export default function Home({ onPlay, onReview }: HomeProps) {
                   outcome === "Loss" ? "var(--loss)" : "var(--draw)";
                 return (
                   <tr key={row.game_id}>
+                    <td><GameIdBadge id={row.public_id} size={11} /></td>
                     <td className="mono dim">{fmtDate(row.played_at)}</td>
                     <td style={{ textTransform: "capitalize" }}>{row.player_color}</td>
                     <td className="mono">{opponentLabel(row.engine, row.engine_elo)}</td>
