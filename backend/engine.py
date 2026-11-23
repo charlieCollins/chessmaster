@@ -2,6 +2,8 @@ import chess
 import chess.engine
 from typing import Callable, Optional, TypeVar
 import shutil
+import subprocess
+import functools
 import os
 import pathlib
 import random
@@ -158,9 +160,20 @@ def _weights_file(level: int) -> pathlib.Path:
     return MAIA_WEIGHTS_DIR / f"maia-{level}.pb.gz"
 
 
+@functools.lru_cache(maxsize=4)
+def _lc0_runs(path: str) -> bool:
+    """Does this lc0 binary actually start here? (A copy built for another CPU dies with
+    'Illegal instruction' — then Maia must be hidden, not offered and crash.)"""
+    try:
+        return subprocess.run([path, "--help"], capture_output=True, timeout=10).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def maia_available() -> bool:
-    """True if lc0 can be found and every Maia weights file is present."""
-    return bool(LC0_PATH) and all(_weights_file(lv).is_file() for lv in MAIA_LEVELS)
+    """True if lc0 runs and every Maia weights file is present."""
+    return (bool(LC0_PATH) and all(_weights_file(lv).is_file() for lv in MAIA_LEVELS)
+            and _lc0_runs(LC0_PATH))
 
 
 def parse_policy(info_strings: list[str]) -> dict[str, float]:

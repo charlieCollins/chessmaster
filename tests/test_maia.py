@@ -121,3 +121,18 @@ def test_maia_policy_uses_move_history():
         assert eng.policy(board)["e7e5"] > 0.5
     finally:
         eng.close()
+
+
+def test_maia_unavailable_when_lc0_cannot_run(monkeypatch, tmp_path):
+    """A binary that exists but can't run here (e.g. built for another CPU) must hide Maia."""
+    import backend.engine as engine
+    for lv in engine.MAIA_LEVELS:
+        (tmp_path / f"maia-{lv}.pb.gz").write_bytes(b"x")
+    monkeypatch.setattr(engine, "MAIA_WEIGHTS_DIR", tmp_path)
+    monkeypatch.setattr(engine, "LC0_PATH", "/bin/false")       # exists, exits non-zero
+    engine._lc0_runs.cache_clear()
+    assert engine.maia_available() is False
+    monkeypatch.setattr(engine, "LC0_PATH", "/bin/true")
+    engine._lc0_runs.cache_clear()
+    assert engine.maia_available() is True
+    engine._lc0_runs.cache_clear()
