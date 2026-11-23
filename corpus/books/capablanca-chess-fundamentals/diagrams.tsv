@@ -1,0 +1,151 @@
+fig	fen	kind	note
+Fig1	7k/8/8/8/8/8/8/R6K w - - 0 1	position	
+Fig2	8/8/8/4k3/8/8/8/4K2R w - - 0 1	position	
+Fig3	7k/8/8/8/8/8/8/2B1KB2 w - - 0 1	position	
+Fig4	8/8/8/4k3/8/8/8/4K2Q w - - 0 1	position	
+Fig5	8/8/8/8/4k3/8/3KP3/8 w - - 0 1	position	
+Fig6	8/8/5k2/8/5K2/8/4P3/8 w - - 0 1	position	
+Fig7	5k2/6p1/4K1P1/5P2/8/8/8/8 w - - 0 1	position	
+Fig8	8/6p1/3k4/8/3K1PP1/8/8/8 w - - 0 1	position	
+Fig9	8/6pp/3k4/8/3K1PPP/8/8/8 w - - 0 1	position	
+Fig10	8/p6p/4k3/8/4K3/8/P5PP/8 w - - 0 1	position	
+Fig11	5rk1/1b3p1p/ppq3p1/2p5/8/1P1P1R1Q/PBP3PP/7K b - - 0 1	position	
+Fig12	5rk1/1bq1bp1p/p1n3p1/1p6/3N4/1P1PR2Q/PBP3PP/7K w - - 0 1	position	
+Fig13	2q2rk1/1b3ppp/pp6/2p5/2P1N3/PP1Q4/1B3PPP/6K1 w - - 0 1	position	
+Fig14	2q1rrk1/1bpn1ppp/pp1p4/1B6/4N3/1P1QR3/PBP2PPP/6K1 w - - 0 1	position	
+Fig15	r3qrk1/1pp2ppp/p1np4/3Q4/8/P2B1N2/1PP2PPP/3R2K1 w - - 0 1	position	
+Fig16	2nb1rk1/1pqrnppp/p2p4/2pQ1N2/6P1/1P1B1N1P/P3RP2/3R2K1 w - - 0 1	position	
+Fig17	r1bq1rk1/ppp2ppp/2np1n2/1B2p1B1/1b2P3/2NP1N2/PPP2PPP/R2Q1RK1 b - - 0 1	position	
+Fig18	rn2kbnr/p4ppp/1pp2q2/4p3/2B1P3/1QN5/PPP2PPP/R1B1K2R w KQkq - 0 1	position	
+Fig19	r2qkbnr/ppp2pp1/2np3p/4p3/2BPP1b1/2N2N2/PPP2PPP/R1BQK2R w KQkq - 0 1	position	
+Fig20	rn1qkbnr/ppp1pppp/8/8/2B3b1/2N2N2/PPPP1PPP/R1BQK2R w KQkq - 0 1	position	
+Fig21	8/p5p1/7p/6k1/8/7K/PP5P/8 w - - 0 1	position	
+Fig22	8/6p1/7p/8/4k3/8/6KP/8 w - - 0 1	position	
+Fig23	8/6p1/7p/8/8/7k/7P/6K1 w - - 0 1	position	
+Fig24	8/6p1/8/8/7p/7k/7P/6K1 w - - 0 1	position	
+Fig25	8/ppp4k/8/PPP5/8/8/8/7K w - - 0 1	position	
+Fig26	8/p5kp/8/1P6/8/1K6/P7/8 w - - 0 1	position	
+Fig27	8/8/4k3/1p5p/1P2K2P/8/8/8 w - - 0 1	position	
+Fig28	8/8/2k5/8/4K3/8/8/8 w - - 0 1	position	
+Fig29	8/8/8/8/2k1K3/8/8/8 w - - 0 1	position	
+Fig30	4k3/8/8/1p5p/1P5P/8/8/4K3 w - - 0 1	position	
+Fig31	8/8/8/4p1p1/8/5P2/6K1/3k4 b - - 0 1	position	
+Fig32	k7/8/1K1NN3/8/8/8/8/8 w - - 0 1	position	
+Fig33	k7/8/1K1N4/7p/7N/8/8/8 w - - 0 1	position	
+Fig34	7k/8/8/6K1/8/3B4/7P/8 w - - 0 1	position	
+Fig35	8/8/5Np1/8/8/7p/5K2/7k b - - 0 1	position	
+Fig36	8/8/8/N2b4/8/8/8/8 w - - 0 1	illustration	Piece-reach illustration (no kings).
+Fig37	4k3/3n4/2p5/1pPp4/pP1P4/P7/8/2B1K3 w - - 0 1	position	
+Fig38	4k3/3n1ppp/8/8/8/8/5PPP/2B1K3 w - - 0 1	position	
+Fig39	4k3/pppn1ppp/8/8/8/8/PPP2PPP/2B1K3 w - - 0 1	position	
+Fig40	4k3/pppn1pp1/8/8/8/8/1PP2PPP/2B1K3 w - - 0 1	position	
+Fig41	4k3/pppn1p2/8/8/8/8/2P2PPP/2B1K3 w - - 0 1	position	
+Fig42	4k3/p1pn1p2/8/8/8/8/2P2P1P/2B1K3 w - - 0 1	position	
+Fig43	4k3/8/8/8/8/8/8/2B1K1N1 w - - 0 1	position	
+Fig44	k7/8/2K5/3N4/5B2/8/8/8 w - - 0 1	position	
+Fig45	1k6/1r6/2K5/Q7/8/8/8/8 w - - 0 1	position	
+Fig46	8/k7/2K5/4Q3/8/8/8/1r6 w - - 0 1	position	
+Fig47	8/5rk1/8/5Q1K/8/8/8/8 w - - 0 1	position	
+Fig48	2kr4/ppp1qp2/4bQ2/8/3P2r1/N1P5/PP4P1/R1B2RK1 b - - 0 1	position	
+Fig49	kr2r3/pRp3pp/Q1P5/5R2/Pp1q4/3pp2P/6PK/8 w - - 0 1	position	
+Fig50	3q1kn1/r5p1/1ppr1pQn/p2ppP2/P3P2R/1BPPB3/1P3PK1/7R w - - 0 1	position	
+Fig51	4r2r/p1pb1ppk/2ppn2p/1q3N1N/4PPP1/1P2Q3/4R2P/2R3K1 w - - 0 1	position	
+Fig52	r1bq1rk1/pp2nppp/4p3/2n5/8/2NBPN2/PP3PPP/R2Q1RK1 w - - 0 1	position	
+Fig53	2r1r1k1/2p2pbp/2ppq1p1/8/2n1P3/2N2P2/PPPBQ1PP/1R3RK1 b - - 0 1	position	
+Fig54	r4rk1/p3q1pp/1pb5/2pn1p2/8/3BPN2/PP2QPPP/2RR2K1 w - - 0 1	position	
+Fig55	r1bq1rk1/pp2nppp/4p3/2n5/8/2NBPN2/PP3PPP/R2Q1RK1 w - - 0 1	position	Same position as Diagram 52.
+Fig56	r1bq1k1r/b5pp/1nRN4/4p3/1P2P1n1/5NB1/P4PPP/3Q1RK1 w - - 0 1	position	
+Fig57	r1bqkb1r/ppp2ppp/4pn2/4N3/3P4/8/PPP2PPP/R1BQKB1R b KQkq - 0 1	position	
+Fig58	r1bqk2r/ppp2ppp/3bpn2/4N3/3P4/5Q2/PPP2PPP/R1B1KB1R b KQkq - 0 1	position	
+Fig59	4r1k1/pp1bqnpp/2p1pr2/4Np2/2PP4/3B3Q/PP2RPPP/4R1K1 w - - 0 1	position	
+Fig60	2b1r3/p3q1kp/1p2Prp1/2p1Bp2/2P5/2QB4/PP3PPP/4R1K1 w - - 0 1	position	
+Fig61	1rb2qk1/p1p2p1p/3b2p1/2p1p3/2PnP2N/1P2N3/P2R1PPP/R2Q2K1 w - - 0 1	position	
+Fig62	1rb2qk1/p1p4p/3b4/2p1pp2/2Pn4/1P2NN2/P2R1PPP/R2Q2K1 w - - 0 1	position	
+Fig63	5qk1/pb5p/3br3/2p1p2Q/2Pp1p2/1P3P2/P3R1PP/4RNK1 w - - 0 1	position	
+Fig64	8/p3k2p/8/3R4/2P2p2/1P1pr3/P4KPP/8 w - - 0 1	position	
+Fig65	r1bq1rk1/ppp2pp1/3b1n1p/2p1p3/4P2B/2NP1N2/PPP2PPP/R2Q1RK1 w - - 0 1	position	
+Fig66	r1bq1rk1/ppp2p2/3b1n1p/2pNp1p1/4P2B/3P1N2/PPP2PPP/R2Q1RK1 w - - 0 1	position	
+Fig67	r4rk1/ppp5/3b1p1p/2p1p1p1/4P3/3P1PBP/PPP2P2/R4RK1 w - - 0 1	position	
+Fig68	r1b1kb1r/pp1n1ppp/2p1pn2/q2p2B1/2PP4/2N1PN2/PP3PPP/R2QKB1R w KQkq - 0 1	position	
+Fig69	r1b2rk1/pp3ppp/2p2b2/q3p3/2BPP3/PQP2N2/5PPP/R4RK1 w - - 0 1	position	
+Fig70	4r1k1/p1q4p/bppr1pp1/2bPp3/P1P1P2N/1Q6/2R1BPPP/3R2K1 b - - 0 1	position	
+Fig71	5qk1/p6p/1p3r2/2bP1b2/P1P1r1p1/1Q1Bp1P1/1R2N1KP/5R2 w - - 0 1	position	
+Fig72	6k1/p6p/1p3r2/2bP1b2/P1r3p1/3Bp1Pq/2Q1N2P/1R3R1K w - - 0 1	position	
+Fig73	6k1/p6p/1p3R2/2bP4/P1b2Np1/6Pq/4p2P/1R5K w - - 0 1	position	
+Fig74	6k1/p4p1p/1p4p1/3r4/2r5/P1P4P/2R2PP1/2R1K3 b - - 0 1	position	
+Fig75	2r2rk1/p1pp1p1p/2p2p2/8/8/2PP1P2/PP3P1P/R3R1K1 w - - 0 1	position	
+Fig76	r1k5/p1p4p/2p1p3/R1Pp1p2/3P1P2/8/PP1K1P1P/8 b - - 0 1	position	
+Fig77	8/1kp4p/p1p1pr2/K1Pp1pRP/PP1P1P2/8/5P2/8 w - - 0 1	position	
+Fig78	2R5/p4p1k/5p1p/6r1/5K2/4P2P/Pr4P1/7R w - - 0 1	position	
+Fig79	8/7R/8/2k2P2/1p6/3r4/5PKP/8 w - - 0 1	position	
+Fig80	8/5P1R/3r4/2k5/1p6/8/5PKP/8 w - - 0 1	position	
+Fig81	8/2R5/1k1r1P2/8/1p6/8/5PKP/8 w - - 0 1	position	
+Fig82	8/8/8/2k5/8/4K3/3R1P1r/8 w - - 0 1	position	
+Fig83	r4rk1/p5pp/2p5/3p1p2/2p5/2P1PP2/PPK2P1P/3R1R2 b - - 0 1	position	
+Fig84	8/p1r4p/R1p1kr2/3p1p2/R5pP/1PP1PP2/4KP2/8 b - - 0 1	position	
+Fig85	8/pr3r1p/R1pk4/3p1p1P/RP6/2P1P3/4KP2/8 b - - 0 1	position	
+Fig86	1k2r3/1ppr2pp/p1p2p2/5R2/4P3/1P1P3P/P1P3P1/5RK1 w - - 0 1	position	
+Fig87	8/1kp1r1pp/p1p1r3/Pp4R1/1P2P3/3PK2P/2P5/5R2 b - - 0 1	position	
+Fig88	r1b3k1/p1p3pp/2p5/8/3pP3/6P1/PPP4P/RN3K2 b - - 0 1	position	
+Fig89	8/2p2p1p/p3p1p1/1p1pP3/1P1P4/1P6/P4PPP/8 w - - 0 1	illustration	Pawn-structure illustration (no kings).
+Fig90	8/ppp2ppp/4p3/3pP3/3P4/8/PPP2PPP/8 w - - 0 1	illustration	Pawn-structure illustration (no kings).
+Fig91	r3r1k1/2pq1p1p/p5p1/1p1pP3/3P4/3Q4/PP3PPP/2R1R1K1 w - - 0 1	position	
+Fig92	2r3k1/1q3p1p/p1p1r1p1/1pRpP3/3P4/Q7/PP3PPP/2R3K1 w - - 0 1	position	
+Fig93	2r3k1/1q5p/p1p1r1p1/1pRpPp2/3P1PP1/Q6P/PP6/2R4K w - - 0 1	position	
+Fig94	5r1k/3q3p/p1p1r1p1/1pRpPp2/1P1P1PP1/2R3KP/P7/2Q5 w - - 0 1	position	
+Fig95	r4rk1/pppbqppp/1n2p3/3n4/3P4/2NBPN2/PP3PPP/2RQ1RK1 b - - 0 1	position	
+Fig96	r3brk1/pp2q1pp/1np1p3/2NnNp2/3P4/3BP3/PP3PPP/2RQ1RK1 b - - 0 1	position	
+Fig97	4b2k/ppr1q2p/1np1p2r/2N1N1p1/3PPp2/P2BnP1P/1P3QP1/2R1R1K1 w - - 0 1	position	
+Fig98	r1b2rk1/p3qppp/1p3n2/2pp4/P2P4/Q1PBPN2/5PPP/R3K2R w KQ - 0 14	position	Game 1, after 26 plies (from the game score).
+Fig99	r4rk1/pbqn1ppp/1p6/P1pp4/3P4/Q1PBPN2/5PPP/RR4K1 w - - 5 17	position	Game 1, after 32 plies (from the game score).
+Fig100	2rqk1nr/pp2bppp/2n1b3/2pp4/3P4/2N2NP1/PP2PPBP/R1BQ1RK1 w k - 5 9	position	Game 2, after 16 plies (from the game score).
+Fig101	2r2rk1/pp4pp/2n1pq2/2bp4/8/2N3PB/PP2PP1P/R2Q1RK1 w - - 0 15	position	Game 2, after 28 plies (from the game score).
+Fig102	2r2rk1/pp4pp/2n1p2q/2bN4/8/6PB/PP2PP1P/R2Q1RK1 w - - 1 16	position	Game 2, after 30 plies (from the game score).
+Fig103	8/pp1k2pp/2n5/5R2/2B5/3P2P1/Pr3PKP/8 b - - 8 30	position	Game 2, after 59 plies (from the game score).
+Fig104	8/8/1kn5/3B3R/pp5P/3P2P1/Pr3PK1/8 b - - 5 38	position	Game 2, after 75 plies (from the game score).
+Fig105	r3kn1r/pp2bppp/2p2n2/q3p1Bb/4N3/3BPN1P/PPP1QPP1/R2R2K1 b kq - 1 12	position	Game 3, after 23 plies (from the game score).
+Fig106	r6r/ppq2pp1/2p1nkp1/4p3/1P2Q3/4PN1P/P1P2PP1/R2R2K1 w - - 2 19	position	Game 3, after 36 plies (from the game score).
+Fig107	3n4/ppq2pp1/2p2k2/4p1p1/1PP1Q3/4PN1P/P4PP1/6K1 w - - 0 24	position	Game 3, after 46 plies (from the game score).
+Fig108	1k1r2r1/pbpn1p1p/1p2pp2/5q2/2PP4/3RQNP1/P1P1BP1P/2KR4 w - - 5 17	position	Game 4, after 32 plies (from the game score).
+Fig109	3rrq2/pk1n1p1p/1pp1pp2/2P5/3P1P2/3RQNP1/P1P4P/2KR4 w - - 2 23	position	Game 4, after 44 plies (from the game score).
+Fig110	k1r1rq2/p4p1p/2p1pp2/N1Pn4/3Q1P2/3R2P1/P1P4P/2KR4 w - - 3 28	position	Game 4, after 54 plies (from the game score).
+Fig111	kr6/p2Pqp1p/2p2p2/2P5/5P2/1N1p2P1/P1r4P/1K1R2Q1 w - - 5 35	position	Game 4, after 68 plies (from the game score).
+Fig112	r1b1r1k1/1pp1n1pp/p1pb1p2/5P2/4P3/1NN5/PPP3PP/R1B2RK1 b - - 0 12	position	Game 5, after 23 plies (from the game score).
+Fig113	r1b1r1k1/2p1n1pp/pppb1p2/5P2/4PB2/1NN5/PPP3PP/R4RK1 b - - 1 13	position	Game 5, after 25 plies (from the game score).
+Fig114	4r1k1/1b1rn1pp/ppppNp2/5P2/4P3/2N5/PPP3PP/3R1RK1 b - - 5 17	position	Game 5, after 33 plies (from the game score).
+Fig115	r1b2k1r/pp3pp1/2n1p2p/q3P3/4Q3/2p5/P1P1NPPP/R1B2RK1 w - - 1 15	position	Game 6, after 28 plies (from the game score).
+Fig116	2r3r1/pp1b1p1k/4p1pp/3nP2P/1q1NQP2/2p4R/P1P2BP1/R5K1 b - - 2 24	position	Game 6, after 47 plies (from the game score).
+Fig117	2r5/pp1b3k/4pnrp/8/1q1NQP2/2p4R/P1P2BP1/R5K1 w - - 0 27	position	Game 6, after 52 plies (from the game score).
+Fig118	2r5/pp1b4/5nrk/5p2/1Q3P2/2p5/P1P2BP1/R5K1 b - - 0 29	position	Game 6, after 57 plies (from the game score).
+Fig119	r3r1k1/2p1qppp/p1n1bn2/1pb1p1B1/4P3/2P1NN2/PPB1QPPP/R4RK1 w - - 7 15	position	Game 7, after 28 plies (from the game score).
+Fig120	rn2rk2/2p2ppQ/p2b1q2/3Pp3/P7/5N2/1PB2PPP/R4RK1 w - - 1 22	position	Game 7, after 42 plies (from the game score).
+Fig121	r1bq2k1/pppp1ppp/2n5/8/1b2rB2/6Q1/PPP2PPP/2KR1BNR b - - 1 10	position	Game 8, after 19 plies (from the game score).
+Fig122	r1b3k1/ppp2ppp/3p1q2/8/1b1nr3/3BB1QN/PPP2PPP/2KR3R b - - 3 13	position	Game 8, after 25 plies (from the game score).
+Fig123	r5k1/ppp2ppp/3p1q2/6N1/1b4Q1/3Br3/PPP1nPPP/2KR3R w - - 1 16	position	Game 8, after 30 plies (from the game score).
+Fig124	r5k1/pp1q1ppp/2p5/2bp1P2/4Q3/2P5/PP1R2PP/2K1R3 w - - 0 25	position	Game 8, after 48 plies (from the game score).
+Fig125	3r4/p4ppk/5b1p/2pp1P2/qp4P1/2P5/PP1R2QP/1K1R4 w - - 0 36	position	Game 8, after 70 plies (from the game score).
+Fig126	8/p4ppk/3Q1b1p/3R1P2/q1p3P1/Pr6/1P1R3P/1K6 b - - 3 41	position	Game 8, after 81 plies (from the game score).
+Fig127	2r3k1/1b2bppp/p4n2/1p1p2B1/3N4/4P3/PP2NPPP/3R2K1 w - - 1 20	position	Game 9, after 38 plies (from the game score).
+Fig128	2r5/1b2kp1p/p4np1/1p1p2B1/3N4/4PP2/PP4PP/3R2K1 b - - 0 23	position	Game 9, after 45 plies (from the game score).
+Fig129	7r/1b3p2/p3k1p1/1p1p4/5B1P/4PP2/PP1R2P1/6K1 w - - 2 29	position	Game 9, after 56 plies (from the game score).
+Fig130	2b5/5p2/p3k1p1/1p1p4/5B1P/4PP2/PP3KP1/8 b - - 1 31	position	Game 9, after 61 plies (from the game score).
+Fig131	r3k2r/pppnbpp1/3pbq1p/1Q6/3P4/2NB1N2/PPP2PPP/R3K2R b KQkq - 4 12	position	Game 10, after 23 plies (from the game score).
+Fig132	1r3rk1/p2nbpq1/3pb2p/3N2p1/3pQ3/1P1B1N1P/P1P2PP1/R4RK1 b - - 1 18	position	Game 10, after 35 plies (from the game score).
+Fig133	2kr3r/1pp1qppp/p1p4n/4p3/4P1b1/2NPPN2/PPP3PP/R3QRK1 w - - 5 11	position	Game 11, after 20 plies (from the game score).
+Fig134	2kr3r/2p2npp/1p3p2/pPqNp3/2P1P3/3PPR2/6PP/1R2Q1K1 b - - 0 18	position	Game 11, after 35 plies (from the game score).
+Fig135	r1bqk2r/ppp1bppp/4pn2/8/3P4/3B1N2/PPP2PPP/R1BQK2R w KQkq - 2 8	position	Game 12, after 14 plies (from the game score).
+Fig136	r1bq1rk1/ppp2p2/4pbpp/8/3PQ2P/3B1N2/PPP2PP1/R3K2R b KQ - 0 12	position	Game 12, after 23 plies (from the game score).
+Fig137	4r1k1/p4pb1/1p2q1pp/2pRP3/P1P1Q2P/5N2/1PK2PP1/8 w - - 1 28	position	Game 12, after 54 plies (from the game score).
+Fig138	4rk2/p4pb1/1p2q1pp/2pRP3/P1P1Q1PP/1P1K1N2/5P2/8 w - - 5 35	position	Game 12, after 68 plies (from the game score).
+Fig139	4rk2/p4pb1/1p2q1pp/2pRP3/P1P1Q1PP/1P3NK1/5P2/8 w - - 13 39	position	Game 12, after 76 plies (from the game score).
+Fig140	r2qr1k1/pppb1pb1/2np1npp/1B6/4P2B/2N2N2/PPPQ1PPP/2KRR3 b - - 5 12	position	Game 13, after 23 plies (from the game score).
+Fig141	r2qr1k1/1pp2pb1/p1npb2p/3N2pn/4P3/2PB1NB1/PP1Q1PPP/2KRR3 b - - 0 16	position	Game 13, after 31 plies (from the game score).
+Fig142	r2qr1k1/1pp3b1/p1npb2p/3N2pn/4Pp1P/2PB1NB1/PP1Q1PP1/2KRR3 w - - 0 18	position	Game 13, after 34 plies (from the game score).
+Fig143	r2q2k1/1pp2bb1/p2p1n2/3Nr1p1/4Pp2/2PB4/PP1Q1PPB/1K1R3R w - - 2 23	position	Game 13, after 44 plies (from the game score).
+Fig144	r2q2k1/1p3bb1/p1pp4/3N2p1/4rP2/2P5/PP1Q1P1B/1K1R3R w - - 0 26	position	Game 13, after 50 plies (from the game score).
+Fig145	r2r2k1/pb1nqppp/1pp1p3/8/2BPP3/2Q2N2/PP3PPP/2R1R1K1 w - - 3 15	position	Game 14, after 28 plies (from the game score).
+Fig146	r2r2k1/pb2qppp/1pp1p3/2nP4/2B1P3/2Q2N2/PP3PPP/2R1R1K1 w - - 1 16	position	Game 14, after 30 plies (from the game score).
+Fig147	r2r2k1/pb3ppp/1pp1q3/8/3NP3/2Q5/PP3PPP/2R1R1K1 b - - 1 18	position	Game 14, after 35 plies (from the game score).
+Fig148	4r1k1/pb3p1p/1pN5/4P1p1/8/2R5/PP1r1PPP/1R4K1 w - - 0 23	position	Game 14, after 44 plies (from the game score).
+Fig149	8/pb3pkp/2N3r1/1p2P3/1P5p/P1R5/r4PP1/2R2K2 w - - 3 29	position	Game 14, after 56 plies (from the game score).
+Fig150	8/1b3pkp/p1N3r1/1p2P3/1P6/P1R3Pp/r4P2/2R3K1 w - - 0 31	position	Game 14, after 60 plies (from the game score).

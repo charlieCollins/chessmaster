@@ -1,0 +1,339 @@
+# Learn topics. Edit here, then run: .venv/bin/python scripts/build_corpus.py
+# book = ["<book slug>:<section number>"]   themes = Lichess puzzle theme tags
+# (theme list with counts: corpus/puzzles/README.md)
+
+# ---------------------------------------------------------------- Pieces
+[[topic]]
+slug = "knights"
+title = "Knights"
+group = "Pieces"
+summary = "The short-range jumper: forks, outposts, and why a knight needs support points."
+ideas = [
+  "A knight is best on a protected central square the enemy pawns can't attack (an outpost); on the rim it controls half as many squares.",
+  "Knights are slow: count the moves to get one where it's needed before committing to a plan.",
+  "The knight is the forking piece — always check which two enemy pieces sit a knight's jump apart.",
+  "Knights do well in closed positions with fixed pawns; against a bishop in an open position with pawns on both wings they usually suffer (Capablanca §14).",
+]
+book = ["capablanca-chess-fundamentals:14", "capablanca-chess-fundamentals:18", "capablanca-chess-fundamentals:30"]
+themes = ["fork", "knightEndgame", "smotheredMate"]
+drill = "Start with `fork` puzzles in your band, then smothered mates; finish with Capablanca's diagrams 32–42 (knight vs bishop) played out against the engine."
+app = "Learn → Knights (lesson cards). Play: try to win the knight-vs-bishop positions from §14 against Stockfish."
+
+[[topic]]
+slug = "bishops"
+title = "Bishops"
+group = "Pieces"
+summary = "Long-range diagonal piece: good vs bad bishops, the bishop pair, pins."
+ideas = [
+  "A bishop is 'bad' when its own pawns are fixed on its colour; put your pawns on the opposite colour to your bishop.",
+  "Two bishops together cover both colours and grow stronger as the position opens.",
+  "Bishops pin and skewer along diagonals — look for a king or queen behind a defended piece.",
+  "With pawns on both sides of the board a bishop usually beats a knight (Capablanca §14, §30).",
+]
+book = ["capablanca-chess-fundamentals:14", "capablanca-chess-fundamentals:15", "capablanca-chess-fundamentals:30"]
+themes = ["pin", "bishopEndgame", "doubleBishopMate", "bodenMate"]
+drill = "Diagonal `pin` puzzles first, then `bishopEndgame` in your band. Replay Capablanca's §30 ending (diagram 88) — a model of bishop vs knight."
+app = "Learn → Bishops (lesson cards)."
+
+[[topic]]
+slug = "rooks"
+title = "Rooks"
+group = "Pieces"
+summary = "Open files, the seventh rank, active rooks in the endgame."
+ideas = [
+  "Put rooks on open (or half-open) files; doubling them makes the file yours.",
+  "A rook on the seventh rank attacks pawns and pins the king to the back rank.",
+  "In rook endings activity beats material: an active rook is often worth a pawn.",
+  "Rooks belong behind passed pawns — yours or the opponent's.",
+]
+book = ["capablanca-chess-fundamentals:1", "capablanca-chess-fundamentals:28", "capablanca-chess-fundamentals:29"]
+themes = ["rookEndgame", "backRankMate"]
+drill = "Mate with K+R vs K from Capablanca diagram 2 against the engine until it takes < 20 moves, then `rookEndgame` puzzles."
+app = "Learn → Rooks (lesson cards)."
+
+[[topic]]
+slug = "pawns"
+title = "Pawns"
+group = "Pieces"
+summary = "Pawn structure, passed pawns and promotion — 'the soul of chess' (Philidor)."
+ideas = [
+  "Pawns can't move back: every pawn move leaves squares it can never guard again.",
+  "A passed pawn must be pushed; a protected or outside passed pawn is often decisive in the ending.",
+  "Doubled, isolated and backward pawns are weaknesses mainly when pieces can attack them.",
+  "Count the race: which pawn queens first, and with check? (Capablanca §12).",
+]
+book = ["capablanca-chess-fundamentals:2", "capablanca-chess-fundamentals:3", "capablanca-chess-fundamentals:11", "capablanca-chess-fundamentals:12", "capablanca-chess-fundamentals:31"]
+themes = ["pawnEndgame", "advancedPawn", "promotion", "underPromotion", "enPassant"]
+drill = "Capablanca §2–3 and §11–12 positions as play-it-out drills, then `pawnEndgame` and `promotion` puzzles."
+app = "Learn → Pawns (lesson cards)."
+
+[[topic]]
+slug = "queens"
+title = "Queens"
+group = "Pieces"
+summary = "The most powerful piece — and the easiest to chase around if developed too early."
+ideas = [
+  "Develop minor pieces before the queen; an early queen gets attacked with tempo.",
+  "The queen is the best double-attacker: look for queen forks on loose pieces and the king.",
+  "Queen vs rook is a win but needs technique (Capablanca §16).",
+  "When ahead, offering a queen trade usually helps; when behind, keep queens on for counterplay.",
+]
+book = ["capablanca-chess-fundamentals:1", "capablanca-chess-fundamentals:16"]
+themes = ["queenEndgame", "queenRookEndgame"]
+drill = "K+Q vs K from Capablanca diagram 4, then the Q vs R positions (diagrams 45–47) against the engine."
+app = "Learn → Queens (lesson cards)."
+
+[[topic]]
+slug = "kings"
+title = "Kings"
+group = "Pieces"
+summary = "Hide it in the middlegame, use it as a fighting piece in the endgame."
+ideas = [
+  "Castle early and keep the pawns in front of your king unmoved unless there's a reason.",
+  "Once queens are off, centralise the king — it's a strong piece in the ending.",
+  "The opposition: kings facing each other with one square between; the side *not* to move holds it (Capablanca §13).",
+  "In pawn endings the king leads the pawn, not the other way round.",
+]
+book = ["capablanca-chess-fundamentals:3", "capablanca-chess-fundamentals:10", "capablanca-chess-fundamentals:13"]
+themes = ["zugzwang", "exposedKing", "castling"]
+drill = "Opposition positions from Capablanca §13 (diagrams 27–31) as drills; then `zugzwang` puzzles."
+app = "Learn → Kings (lesson cards)."
+
+# ---------------------------------------------------------------- Tactics
+[[topic]]
+slug = "forks"
+title = "Forks and double attacks"
+group = "Tactics"
+summary = "One move, two threats — the opponent can only answer one."
+ideas = [
+  "Any piece can fork; knights and queens do it most. Pawn forks are often missed.",
+  "Checks make the best forks: the king must move, the other target falls.",
+  "Loose (undefended) pieces are fork targets — 'loose pieces drop off'.",
+]
+themes = ["fork", "doubleCheck"]
+drill = "Daily set of 10–20 `fork` puzzles in your band; missed ones go to review."
+
+[[topic]]
+slug = "pins-and-skewers"
+title = "Pins and skewers"
+group = "Tactics"
+summary = "Line attacks: a pinned piece can't (or shouldn't) move; a skewered one must, exposing what's behind."
+ideas = [
+  "Absolute pin: the piece behind is the king, so the pinned piece can't legally move.",
+  "Attack a pinned piece again — it can't run away.",
+  "A skewer is a pin in reverse: the more valuable piece is in front and must move.",
+  "X-ray: a piece attacks or defends through another piece on the same line.",
+]
+themes = ["pin", "skewer", "xRayAttack"]
+drill = "`pin` then `skewer` sets; mix them once each is solved fast."
+
+[[topic]]
+slug = "discovered-attacks"
+title = "Discovered attacks and double check"
+group = "Tactics"
+summary = "Move one piece to unmask another — two attacks for the price of one move."
+ideas = [
+  "The moving piece can make its own threat (or check) while the piece behind it attacks.",
+  "Discovered check is the strongest version: the opponent must deal with the check first.",
+  "Double check can only be answered by a king move.",
+]
+themes = ["discoveredAttack", "discoveredCheck", "doubleCheck"]
+drill = "`discoveredAttack` puzzles; then the Capablanca middlegame combinations in §4."
+book = ["capablanca-chess-fundamentals:4"]
+
+[[topic]]
+slug = "hanging-and-trapped-pieces"
+title = "Hanging and trapped pieces"
+group = "Tactics"
+summary = "The most common way games are decided below 1500: free material and pieces with no squares."
+ideas = [
+  "Before every move ask: what does their last move attack, and what did it stop defending?",
+  "A piece is trapped when every square it can go to is attacked — bishops on a7/h7 and knights on the rim are classic victims.",
+]
+themes = ["hangingPiece", "trappedPiece"]
+drill = "Fast `hangingPiece` sets (aim for speed), then `trappedPiece`. Cross-check against your own game blunders."
+
+# ------------------------------------------------- Combinations (multi-move)
+[[topic]]
+slug = "removing-the-defender"
+title = "Removing the defender"
+group = "Combinations"
+summary = "Multi-move ideas that win by eliminating, luring away (deflection) or luring in (attraction) a key piece."
+ideas = [
+  "Find what defends the target, then capture it, deflect it, or overload it with a second job.",
+  "Attraction (decoy): sacrifice to drag a piece — often the king — onto a fatal square.",
+  "These are 2–4 move combinations: calculate the forcing line to the end before you start.",
+]
+book = ["capablanca-chess-fundamentals:4", "capablanca-chess-fundamentals:19"]
+themes = ["capturingDefender", "deflection", "attraction"]
+drill = "`deflection` and `attraction` in your band; for each, say out loud which defender is removed before moving."
+
+[[topic]]
+slug = "clearance-and-interference"
+title = "Clearance, interference, in-between moves"
+group = "Combinations"
+summary = "Move-order tricks: clear a line or square, cut a defender's line, or insert a stronger move first."
+ideas = [
+  "Clearance: move (often sacrifice) a piece to open a line or square for another.",
+  "Interference: put a piece between a defender and what it defends.",
+  "Intermezzo (zwischenzug): before the 'obvious' recapture, play a forcing move first.",
+]
+themes = ["clearance", "interference", "intermezzo"]
+drill = "Mixed sets of these three themes — they're rarer, so recognising them is the skill."
+
+[[topic]]
+slug = "sacrifices-and-king-attacks"
+title = "Sacrifices and attacking the king"
+group = "Combinations"
+summary = "Bring more attackers than defenders, then break the king's shelter — Capablanca's attacking chapters."
+ideas = [
+  "Attack where you're stronger: count attackers vs defenders around the king.",
+  "The classic Bxh7+ ('Greek gift') needs a knight to follow to g5 and the queen to reach h5 (Capablanca §4).",
+  "A sacrifice is only sound if the follow-up is forcing (checks, captures, threats).",
+  "f7/f2 is the weak point in the opening — defended only by the king.",
+]
+book = ["capablanca-chess-fundamentals:4", "capablanca-chess-fundamentals:17", "capablanca-chess-fundamentals:18", "capablanca-chess-fundamentals:21"]
+themes = ["sacrifice", "kingsideAttack", "exposedKing", "attackingF2F7"]
+drill = "Play through Capablanca diagrams 11–16 and 48–56 as find-the-move drills, then `sacrifice` puzzles."
+
+[[topic]]
+slug = "mating-patterns"
+title = "Mating patterns"
+group = "Combinations"
+summary = "Named mates you should recognise instantly — back rank, smothered, Arabian, Anastasia and more."
+ideas = [
+  "Back-rank mate: a king boxed in by its own pawns; make 'luft' (a flight square) in time.",
+  "Smothered mate: a knight mates a king surrounded by its own pieces, often after a queen sacrifice.",
+  "Learn the pattern, then look for it two or three moves before it appears.",
+]
+book = ["capablanca-chess-fundamentals:1", "capablanca-chess-fundamentals:4"]
+themes = ["mateIn1", "mateIn2", "mateIn3", "backRankMate", "smotheredMate", "arabianMate", "anastasiaMate", "hookMate", "bodenMate", "dovetailMate", "epauletteMate", "operaMate", "pillsburysMate"]
+drill = "One pattern at a time (e.g. 20 `backRankMate`), then `mateIn2`/`mateIn3` mixed."
+
+[[topic]]
+slug = "calculation"
+title = "Calculation and quiet moves"
+group = "Combinations"
+summary = "Longer combinations and the quiet move in the middle of them — seeing several moves ahead."
+ideas = [
+  "Look at forcing moves first: checks, captures, threats — for both sides.",
+  "A quiet move (no check or capture) inside a combination is the hardest move to find.",
+  "Zugzwang: sometimes the strongest move is the one that leaves the opponent without a good move.",
+]
+themes = ["long", "veryLong", "quietMove", "zugzwang", "mateIn4", "defensiveMove"]
+drill = "Fewer, harder puzzles: solve the whole line in your head before touching a piece; `long` then `veryLong`."
+
+# ---------------------------------------------------------------- Endgames
+[[topic]]
+slug = "basic-mates"
+title = "Basic checkmates"
+group = "Endgames"
+summary = "K+Q, K+R, two bishops, bishop and knight — the techniques every player must know cold."
+ideas = [
+  "Use your king: the lone king is driven to the edge by your king and piece together.",
+  "K+R vs K: box the king in with the rook and shrink the box (Capablanca diagram 2).",
+  "Bishop and knight mate only in a corner of the bishop's colour (Capablanca §15).",
+]
+book = ["capablanca-chess-fundamentals:1", "capablanca-chess-fundamentals:15"]
+drill = "Play each position from §1 and §15 against the engine until you mate inside the 50-move rule every time."
+
+[[topic]]
+slug = "pawn-endings"
+title = "Pawn endings and the opposition"
+group = "Endgames"
+summary = "King and pawn endings decide many games: opposition, key squares, outside passed pawns."
+ideas = [
+  "Get the opposition; when you can't, look for triangulation or a pawn tempo.",
+  "An outside passed pawn decoys the enemy king while yours eats the other side.",
+  "Counting is exact here: calculate the race, don't guess.",
+]
+book = ["capablanca-chess-fundamentals:2", "capablanca-chess-fundamentals:3", "capablanca-chess-fundamentals:9", "capablanca-chess-fundamentals:10", "capablanca-chess-fundamentals:11", "capablanca-chess-fundamentals:12", "capablanca-chess-fundamentals:13"]
+themes = ["pawnEndgame", "zugzwang"]
+drill = "Work through every diagram in Capablanca §2–3 and §9–13 against the engine, then `pawnEndgame` puzzles."
+
+[[topic]]
+slug = "rook-endings"
+title = "Rook endings"
+group = "Endgames"
+summary = "The most common endings: active rooks, cutting off the king, rook behind the passed pawn."
+ideas = [
+  "Activate the rook before grabbing pawns.",
+  "Cut the enemy king off along a rank or file.",
+  "Rooks belong behind passed pawns.",
+]
+book = ["capablanca-chess-fundamentals:26", "capablanca-chess-fundamentals:27", "capablanca-chess-fundamentals:28", "capablanca-chess-fundamentals:29"]
+themes = ["rookEndgame", "queenRookEndgame"]
+drill = "Capablanca §28–29 positions, then `rookEndgame` puzzles in your band."
+
+[[topic]]
+slug = "minor-piece-endings"
+title = "Bishop and knight endings"
+group = "Endgames"
+summary = "Good bishop vs bad bishop, bishop vs knight, knight endings that behave like pawn endings."
+ideas = [
+  "Bishop vs knight: open board and pawns on both wings favour the bishop.",
+  "Put your pawns on the opposite colour to your bishop; attack pawns fixed on your bishop's colour.",
+  "Knight endings are like pawn endings — king activity and outside passers decide.",
+]
+book = ["capablanca-chess-fundamentals:14", "capablanca-chess-fundamentals:30"]
+themes = ["bishopEndgame", "knightEndgame"]
+drill = "Capablanca diagrams 37–42 and 88 as play-it-out drills."
+
+[[topic]]
+slug = "queen-endings"
+title = "Queen endings"
+group = "Endgames"
+summary = "Checks everywhere: queen vs rook technique, perpetual check, shepherding a passed pawn."
+ideas = [
+  "Queen vs rook wins by driving the king to the edge and winning the rook with a fork or zugzwang (Capablanca §16).",
+  "In queen endings, look for perpetual check before anything else when you're worse.",
+]
+book = ["capablanca-chess-fundamentals:16"]
+themes = ["queenEndgame"]
+drill = "Capablanca diagrams 45–47 against the engine."
+
+# ---------------------------------------------------------------- Strategy
+[[topic]]
+slug = "opening-principles"
+title = "Opening principles"
+group = "Strategy"
+summary = "Develop, control the centre, castle — and avoid the classic traps."
+ideas = [
+  "Develop knights and bishops quickly, aiming at the centre; don't move the same piece twice without a reason.",
+  "Control the centre with pawns and pieces (Capablanca §7).",
+  "Castle early; connect the rooks.",
+  "Know the traps in your openings (Capablanca §8).",
+]
+book = ["capablanca-chess-fundamentals:6", "capablanca-chess-fundamentals:7", "capablanca-chess-fundamentals:8", "capablanca-chess-fundamentals:32"]
+themes = ["opening", "attackingF2F7"]
+drill = "Learn → Openings for the lines; `opening` puzzles for the tactics that happen in them."
+app = "Learn → Openings (18 openings / 58 lines)."
+
+[[topic]]
+slug = "initiative-and-planning"
+title = "Initiative and planning"
+group = "Strategy"
+summary = "Keep making threats, attack where you're stronger, and switch sides at the right moment."
+ideas = [
+  "The initiative: the side making threats dictates play — don't give it away for a pawn.",
+  "Attack on the side where you have more space or more pieces.",
+  "A sudden attack on the other wing works when the defender's pieces are tied up (Capablanca §26).",
+  "A 'safe' passive position can be lost by doing nothing (Capablanca §27).",
+]
+book = ["capablanca-chess-fundamentals:20", "capablanca-chess-fundamentals:21", "capablanca-chess-fundamentals:22", "capablanca-chess-fundamentals:23", "capablanca-chess-fundamentals:24", "capablanca-chess-fundamentals:25", "capablanca-chess-fundamentals:26", "capablanca-chess-fundamentals:27"]
+themes = ["kingsideAttack", "queensideAttack"]
+drill = "Read one Capablanca game a week (games.pgn) and guess his move at each diagram before reading on."
+
+[[topic]]
+slug = "pawn-structure"
+title = "Pawn structure and weak squares"
+group = "Strategy"
+summary = "Holes, outposts and pawn majorities — the long-term features plans are built on."
+ideas = [
+  "A hole is a square no pawn can ever guard again; it's a home for an enemy piece (Capablanca §33).",
+  "A queenside pawn majority makes an outside passed pawn for the endgame.",
+  "Trade pieces toward an ending when your pawn structure is better.",
+]
+book = ["capablanca-chess-fundamentals:31", "capablanca-chess-fundamentals:33"]
+themes = ["advancedPawn"]
+drill = "Study Capablanca diagrams 89–97, then look for holes in your own analysed games."

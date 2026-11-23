@@ -65,11 +65,17 @@ spawns a Stockfish process on a 1 GB e2-micro.
 
 ## Other follow-ups
 
-- [ ] Chess corpus: decide what belongs in git. Today `corpus/raw/` (~360 MB) is
-      git-ignored and rebuilt by `scripts/fetch_corpus.sh` from `corpus/SOURCES.md`
-      (the committed index). Options: keep it index-only; or also commit the derived,
-      small, public-domain parts (book markdown, curated puzzle sets) so the Learn
-      content doesn't depend on re-downloading.
+- [ ] Chess corpus: decide what belongs in git. Today `corpus/raw/` (~360 MB), book
+      scans (`corpus/books/*/images/`, 14 MB) and `corpus/puzzles/puzzles.sqlite` (2 GB)
+      are git-ignored and rebuilt by `scripts/fetch_corpus.sh` + `scripts/build_corpus.py`.
+      The text layers (~500 KB: book markdown, `diagrams.tsv`, games.pgn, topics, research)
+      ARE committed for now — `diagrams.tsv` is hand-verified and can't be regenerated.
+      Open question: keep generated markdown in git, or only the curated inputs + an index?
+      Maybe commit a small curated puzzle set once the Learn drills pick theirs.
+- [ ] Corpus: convert the other downloaded books (Lasker *Chess Strategy* 168 diagrams,
+      Staunton *Blue Book* 78, Lasker *Chess and Checkers* + Philidor — text only) using
+      the same pipeline (`scripts/diagram_ocr/`).
+- [ ] Learn area: design + build theme lessons and drills from `corpus/topics/` (next step).
 
 - [ ] Resume in-progress games (today, leaving the Play page abandons the game;
       rows with `result = "*"` accumulate and are never shown)

@@ -47,6 +47,20 @@ has `{ [%eval 0.35] }` (White POV, pawns; `#N` = mate), and flagged moves carry 
 `$6`=?! inaccuracy, `$2`=? mistake, `$4`=?? blunder plus a comment like `Mistake. Best was Nf3.`
 Use python-chess (`chess.pgn.read_game`) to replay positions when explaining.
 
+## Chess corpus (read this when teaching a topic)
+
+`corpus/` holds public-domain / CC0 study material — see `corpus/README.md`.
+- **Teaching a topic** ("teach me knights", "pins", "rook endings"): start at `corpus/topics/<topic>.md`
+  (index: `corpus/topics/README.md`). It links the relevant book sections and lists puzzle themes.
+- **Books:** `corpus/books/capablanca-chess-fundamentals/` — chapters as markdown, every diagram a verified
+  ```` ```fen ```` block with the book's main line in SAN; `games.pgn` = his 14 annotated games.
+- **Puzzles:** `corpus/puzzles/puzzles.sqlite` (6.2M Lichess puzzles, git-ignored) —
+  `corpus_tools.puzzles.puzzles_for_theme(db, theme, lo, hi, min_plays=1000, min_popularity=80)`.
+  Puzzle `fen` is *before* the opponent's move; `moves[0]` is that move, the solution is `moves[1:]`.
+- **Rebuild:** `scripts/fetch_corpus.sh` then `.venv/bin/python scripts/build_corpus.py [puzzles]`.
+  Never hand-edit generated files; edit `books/*/diagrams.tsv` or `topics/topics.toml`.
+- Tools: `corpus_tools/descriptive.py` (old "P - K 4" notation → moves), `gutenberg_html.py`, `mainline.py`, `book.py`, `puzzles.py`, `topics.py`.
+
 ## Architecture
 
 - `backend/main.py` — FastAPI app, routes, lifespan (engine init/shutdown)
