@@ -5,6 +5,7 @@ import { useBoardTheme } from "../themes";
 import { Chessboard } from "react-chessboard";
 import { Chess } from "chess.js";
 import { type EngineKind, opponentLabel } from "../opponents";
+import { grade, estimateElo, type AccuracySummary } from "../ratings";
 
 const COLORS: Record<string, string> = {
   best:        "var(--best)",
@@ -26,38 +27,6 @@ const LEGEND = [
 const GLYPH: Record<string, string> = {
   best: "★", inaccuracy: "?!", mistake: "?", blunder: "??",
 };
-
-function grade(pct: number): { label: string; color: string } {
-  if (pct >= 90) return { label: "Excellent", color: "var(--best)" };
-  if (pct >= 78) return { label: "Good",      color: "var(--good)" };
-  if (pct >= 65) return { label: "Average",   color: "var(--inaccuracy)" };
-  if (pct >= 50) return { label: "Poor",      color: "var(--mistake)" };
-  return              { label: "Blunder-heavy", color: "var(--blunder)" };
-}
-
-// Piece-wise linear mapping from accuracy% → approximate ELO-like performance.
-// 77% (e.g. 2 blunders / 34 moves) ≈ 1000; 90% ≈ 1450; 95% ≈ 1700
-function estimateElo(pct: number): number {
-  const pts: [number, number][] = [
-    [0, 400], [50, 600], [65, 800], [78, 1000], [88, 1350], [95, 1700], [100, 2200],
-  ];
-  for (let i = 0; i < pts.length - 1; i++) {
-    const [x0, y0] = pts[i];
-    const [x1, y1] = pts[i + 1];
-    if (pct >= x0 && pct <= x1) {
-      const t = (pct - x0) / (x1 - x0);
-      return Math.round((y0 + t * (y1 - y0)) / 50) * 50;
-    }
-  }
-  return pct >= 100 ? 2200 : 400;
-}
-
-/** Per-side accuracy computed by the backend (same definition as Home stats). */
-interface AccuracySummary {
-  pct: number;
-  counts: Record<string, number>;
-  n: number;
-}
 
 function RatingCol({ label, sublabel, acc, isYou }: {
   label: string; sublabel?: string; acc: AccuracySummary; isYou?: boolean;

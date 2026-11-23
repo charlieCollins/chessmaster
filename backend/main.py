@@ -283,7 +283,8 @@ def analyze(game_id: int, db: Session = Depends(get_db)):
     if game.result == "*":
         raise HTTPException(400, "Game is still in progress")
     if game.analyzed:
-        raise HTTPException(400, "Game already analyzed. Delete the game to re-analyze.")
+        # Idempotent: Play auto-analyzes at game end and Review may ask again.
+        return {"status": "already_analyzed", "game_id": game_id}
     try:
         analyze_game(game_id, db)
     except Exception as e:

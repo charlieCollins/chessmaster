@@ -200,3 +200,19 @@ def test_games_list_includes_player_accuracy():
     game_id = _analyzed_game_with(["best", "good", "mistake", "blunder"])  # player = white
     row = next(r for r in client.get("/api/games").json() if r["game_id"] == game_id)
     assert row["accuracy"] == 65.0
+
+
+def test_analyze_is_idempotent(monkeypatch):
+    # Play auto-analyzes at game end; Review may ask again — must not error or redo work
+    game_id = _new_game(moves=["e2e4", "e7e5"])
+    with Session(test_engine) as db:
+        db.get(Game, game_id).result = "1-0"
+        db.commit()
+    assert client.post(f"/api/game/{game_id}/analyze").status_code == 200
+
+    def boom(*a, **k):
+        raise AssertionError("analysis re-ran")
+    monkeypatch.setattr(main, "analyze_game", boom)
+    res = client.post(f"/api/game/{game_id}/analyze")
+    assert res.status_code == 200
+    assert res.json()["status"] == "already_analyzed"

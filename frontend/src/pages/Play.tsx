@@ -7,6 +7,7 @@ import { useBoardTheme } from "../themes";
 import { type Quality, QUALITIES, classifyMove, qualityTint } from "../classify";
 import { type EngineKind, opponentLabel, encodeOpponent, decodeOpponent } from "../opponents";
 import { formatEval, describeEval, describeMoveDelta } from "../evalText";
+import { type AccuracySummary, describeResult, grade, estimateElo } from "../ratings";
 
 /** Returns every square on the path from→to (inclusive). For knights/pawns/kings
  *  there are no intermediates, so just [from, to] is returned. */
@@ -149,6 +150,12 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
   const [startError, setStartError] = useState<string | null>(null); // FIX 6: start error state
   // FIX L1: removed dead `san` field from pendingPromotion type
   const [pendingPromotion, setPendingPromotion] = useState<{from: string; to: string} | null>(null);
+  // Post-game ratings: analysis runs automatically when the game ends
+  const [postGame, setPostGame] = useState<{
+    status: "analyzing" | "done" | "error";
+    you: AccuracySummary | null;
+    opp: AccuracySummary | null;
+  } | null>(null);
 
   // FIX 2: timer refs to prevent leaks on unmount
   const hintTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -197,6 +204,29 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
   }, [state]);
 
   const gameActive = state !== null && !state.gameOver;
+
+  // When a game ends, analyze it right away so the result panel can show ratings.
+  // (The analyze endpoint is idempotent, so Review won't redo or fail on it.)
+  const finishedGameId = state?.gameOver ? state.gameId : null;
+  const finishedColor = state?.playerColor ?? "white";
+  useEffect(() => {
+    if (finishedGameId === null) { setPostGame(null); return; }
+    let cancelled = false;
+    setPostGame({ status: "analyzing", you: null, opp: null });
+    (async () => {
+      try {
+        const res = await fetch(`${API}/api/game/${finishedGameId}/analyze`, { method: "POST" });
+        if (!res.ok) throw new Error();
+        const game = await (await fetch(`${API}/api/game/${finishedGameId}`)).json();
+        const acc = game.accuracy ?? {};
+        const oppColor = finishedColor === "white" ? "black" : "white";
+        if (!cancelled) setPostGame({ status: "done", you: acc[finishedColor] ?? null, opp: acc[oppColor] ?? null });
+      } catch {
+        if (!cancelled) setPostGame({ status: "error", you: null, opp: null });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [finishedGameId, finishedColor]);
   useEffect(() => {
     onGameActive?.(gameActive);
   }, [gameActive, onGameActive]);
@@ -757,15 +787,45 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
 
         {state.gameOver && (
           <div style={{ padding: "12px 14px", background: "var(--surface)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
-            <div style={labelStyle}>Game over</div>
-            <div style={{ fontFamily: "var(--font-mono)", color: "var(--text-bright)" }}>
-              {state.result}
+            {(() => {
+              const { headline, detail } = describeResult(state.result, state.termination, state.playerColor);
+              const tone = headline === "You won" ? "var(--win)" : headline === "You lost" ? "var(--loss)" : "var(--draw)";
+              return (
+                <>
+                  <div style={labelStyle}>Game over</div>
+                  <div style={{ fontFamily: "var(--font-display)", fontSize: 20, color: tone, lineHeight: 1.1 }}>{headline}</div>
+                  <div style={{ fontSize: 12, color: "var(--text)", marginTop: 4 }}>{detail}</div>
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}>{state.result}</div>
+                </>
+              );
+            })()}
+
+            <div style={{ borderTop: "1px solid var(--border)", marginTop: 10, paddingTop: 10 }}>
+              {postGame?.status === "analyzing" && (
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-dim)" }}>Analyzing…</div>
+              )}
+              {postGame?.status === "error" && (
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--loss)" }}>Analysis unavailable</div>
+              )}
+              {postGame?.status === "done" && !postGame.you && (
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-dim)" }}>No moves to rate</div>
+              )}
+              {postGame?.status === "done" && ([["You", postGame.you], ["Opponent", postGame.opp]] as const).map(([label, acc]) => {
+                if (!acc) return null;
+                const pct = Math.round(acc.pct);
+                const { label: gradeLabel, color } = grade(pct);
+                return (
+                  <div key={label} style={{ marginBottom: 8 }}>
+                    <div style={{ ...labelStyle, color: label === "You" ? "var(--gold)" : "var(--text-dim)" }}>{label}</div>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                      <span style={{ fontFamily: "var(--font-display)", fontSize: 20, color, lineHeight: 1 }}>{pct}%</span>
+                      <span style={{ fontFamily: "var(--font-display)", fontSize: 15, color: "var(--gold)" }} title="Rough estimate from accuracy, not a rating">~{estimateElo(pct)}</span>
+                    </div>
+                    <div style={{ fontSize: 11, color, fontWeight: 600 }}>{gradeLabel}</div>
+                  </div>
+                );
+              })}
             </div>
-            {state.termination && (
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-dim)", marginTop: 3, textTransform: "capitalize" }}>
-                {state.termination}
-              </div>
-            )}
           </div>
         )}
       </div>
