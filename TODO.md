@@ -65,6 +65,10 @@ spawns a Stockfish process on a 1 GB e2-micro.
 
 ## Other follow-ups
 
+- [ ] Per-user saved games (and Learn progress): today there's one shared history. Behind Cloudflare
+      Access every request carries `Cf-Access-Authenticated-User-Email` — add a `user` column to
+      games / learn tables, scope queries by it, and per-user `games/<user>/<id>.pgn` files.
+
 - [ ] Chess corpus: decide what belongs in git. Today `corpus/raw/` (~360 MB), book
       scans (`corpus/books/*/images/`, 14 MB) and `corpus/puzzles/puzzles.sqlite` (2 GB)
       are git-ignored and rebuilt by `scripts/fetch_corpus.sh` + `scripts/build_corpus.py`.
