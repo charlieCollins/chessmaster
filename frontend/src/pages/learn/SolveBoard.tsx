@@ -133,6 +133,9 @@ export default function SolveBoard({ line, judge, onResult, onNext, nextLabel = 
       setStatus("your-move");
     }
     setFirstTry(false);
+    // The first-try result is decided now — record the miss immediately, so leaving the
+    // position (or reloading) can't lose it. Finishing later won't report again.
+    report({ solved: false, revealed: false });
     setLastMove({ from: uci.slice(0, 2), to: uci.slice(2, 4), color: RED });
     setMessage({ text: `Not quite — ${sanOf(fen, uci)} isn't it. Try again.`, tone: "bad" });
     return false;

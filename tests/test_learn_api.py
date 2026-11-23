@@ -153,3 +153,13 @@ def test_judge_mate_is_accepted(env):
 def test_judge_rejects_illegal(env):
     assert client.post("/api/learn/judge", json={"fen": START, "move": "e2e5", "expected": "e2e4"}).status_code == 400
     assert client.post("/api/learn/judge", json={"fen": "bad", "move": "e2e4", "expected": "e2e4"}).status_code == 400
+
+
+def test_lesson_solve_does_not_advance_a_queued_review(env):
+    """Re-solving a missed drill straight away (lesson context) must not skip spaced review."""
+    miss = attempt(kind="book", ref="tiny:Fig1", topic="knights", solved=False, puzzle_rating=None).json()
+    again = attempt(kind="book", ref="tiny:Fig1", topic="knights", solved=True, puzzle_rating=None).json()
+    assert again["review"] == miss["review"]          # still step 0, same due date
+    with Session(env) as s:
+        row = s.query(LearnReview).one()
+        assert row.step == 0

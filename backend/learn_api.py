@@ -142,6 +142,12 @@ def record_attempt(req: AttemptRequest, db: Session = Depends(get_db)):
                         revealed=int(req.revealed), seconds=req.seconds, puzzle_rating=req.puzzle_rating,
                         rating_before=before, rating_after=after, created_at=now))
     item = db.query(LearnReview).filter(LearnReview.kind == req.kind, LearnReview.ref == req.ref).first()
+    if item and solved and req.context == "lesson":
+        # Re-solving a queued position outside a review (e.g. "restart" right after a miss)
+        # mustn't advance it — only spaced review does that.
+        db.commit()
+        return {"rated": rated, "rating_before": before, "rating_after": after,
+                "review": {"step": item.step, "due_at": item.due_at.isoformat()}}
     nxt = next_review(item.step if item else None, solved, now)
     review = None
     if nxt is None:
