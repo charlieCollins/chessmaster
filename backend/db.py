@@ -69,6 +69,44 @@ class Move(Base):
     eval_loss_cp = Column(Float, nullable=True)  # raw cp lost vs best move, 0–2000 (classification uses win%)
 
 
+class LearnAttempt(Base):
+    """One try at a Learn position (book drill or Lichess puzzle)."""
+    __tablename__ = "learn_attempts"
+    __table_args__ = (Index("ix_learn_attempts_ref", "kind", "ref"), Index("ix_learn_attempts_topic", "topic"))
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    kind = Column(String, nullable=False)        # "puzzle" | "book"
+    ref = Column(String, nullable=False)         # Lichess puzzle id | "<book slug>:<Fig>"
+    topic = Column(String, nullable=True)
+    context = Column(String, nullable=False)     # "lesson" | "review"
+    solved = Column(Integer, nullable=False)     # 1 = solved on the first try
+    revealed = Column(Integer, default=0)        # 1 = solution shown
+    seconds = Column(Float, nullable=True)
+    puzzle_rating = Column(Integer, nullable=True)
+    rating_before = Column(Float, nullable=True)  # null when the attempt wasn't rated
+    rating_after = Column(Float, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+
+
+class LearnReview(Base):
+    """A missed position waiting for spaced review."""
+    __tablename__ = "learn_reviews"
+    __table_args__ = (Index("ux_learn_reviews_item", "kind", "ref", unique=True),)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    kind = Column(String, nullable=False)
+    ref = Column(String, nullable=False)
+    topic = Column(String, nullable=True)
+    step = Column(Integer, nullable=False, default=0)
+    due_at = Column(DateTime, nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+
+
+class LearnState(Base):
+    """Key/value learner state: puzzle_rating, rated_attempts."""
+    __tablename__ = "learn_state"
+    key = Column(String, primary_key=True)
+    value = Column(Float, nullable=False)
+
+
 def init_db(engine=None):
     engine = engine or _engine
     Base.metadata.create_all(engine)
