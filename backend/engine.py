@@ -3,7 +3,12 @@ import chess.engine
 from typing import Callable, Optional, TypeVar
 import shutil
 import os
+import pathlib
+import random
+import re
 import threading
+
+from .config import MAIA_LEVELS, MAIA_POLICY_FLOOR
 
 # Explicit env var wins; otherwise whatever `stockfish` is on PATH.
 STOCKFISH_PATH = os.getenv("STOCKFISH_PATH") or shutil.which("stockfish") or "stockfish"
@@ -133,6 +138,105 @@ class ChessEngine:
         return _white_cp(score), result.move.uci()
 
     def close(self):
+        self._engine.quit()
+
+
+# ── Maia (human-trained nets run by lc0) ─────────────────────────────────────
+LC0_PATH: str | None = os.getenv("LC0_PATH") or shutil.which("lc0")
+MAIA_WEIGHTS_DIR = pathlib.Path(os.getenv("MAIA_WEIGHTS_DIR") or "~/.local/share/maia").expanduser()
+
+_POLICY_LINE = re.compile(r"^(\S+)\s.*\(P:\s*([\d.]+)%\)")
+
+
+def _weights_file(level: int) -> pathlib.Path:
+    return MAIA_WEIGHTS_DIR / f"maia-{level}.pb.gz"
+
+
+def maia_available() -> bool:
+    """True if lc0 can be found and every Maia weights file is present."""
+    return bool(LC0_PATH) and all(_weights_file(lv).is_file() for lv in MAIA_LEVELS)
+
+
+def parse_policy(info_strings: list[str]) -> dict[str, float]:
+    """Parse lc0 VerboseMoveStats lines into {uci: probability 0–1}."""
+    policy: dict[str, float] = {}
+    for line in info_strings:
+        m = _POLICY_LINE.match(line.strip())
+        if not m:
+            continue
+        try:
+            chess.Move.from_uci(m.group(1))  # skips the "node" summary line etc.
+        except (ValueError, chess.InvalidMoveError):
+            continue
+        policy[m.group(1)] = float(m.group(2)) / 100
+    return policy
+
+
+def choose_from_policy(board: chess.Board, policy: dict[str, float], rng: random.Random) -> str | None:
+    """Sample a legal move among those Maia rates >= MAIA_POLICY_FLOOR, weighted by
+    probability; else the most likely legal move; None if no legal move is listed."""
+    legal = {m.uci() for m in board.legal_moves}
+    candidates = {u: p for u, p in policy.items() if u in legal}
+    if not candidates:
+        return None
+    likely = {u: p for u, p in candidates.items() if p >= MAIA_POLICY_FLOOR}
+    if not likely:
+        return max(candidates, key=candidates.get)
+    moves = list(likely)
+    return rng.choices(moves, weights=[likely[u] for u in moves])[0]
+
+
+class MaiaEngine:
+    """Human-like opponent: a Maia net in lc0, playing from its policy at 1 node.
+
+    No search on purpose — Maia's first instinct is what imitates human play.
+    """
+
+    def __init__(self, level: int = 1300, rng: random.Random | None = None):
+        if not LC0_PATH:
+            raise RuntimeError("lc0 not found (set LC0_PATH or put lc0 on PATH)")
+        if level not in MAIA_LEVELS:
+            raise ValueError(f"Maia level must be one of {MAIA_LEVELS}")
+        self._rng = rng or random.Random()
+        self._engine = chess.engine.SimpleEngine.popen_uci(
+            [LC0_PATH, f"--weights={_weights_file(level)}", "--threads=1"],
+            stderr=open(os.devnull, "w"),
+        )
+        self._engine.configure({"VerboseMoveStats": True})
+        self.level = level
+        # python-chess sends `ucinewgame` whenever this token changes; lc0 clears
+        # its cache of network results on ucinewgame, which a weights switch needs.
+        self._game = object()
+
+    def set_level(self, level: int) -> None:
+        if level not in MAIA_LEVELS:
+            raise ValueError(f"Maia level must be one of {MAIA_LEVELS}")
+        if level != self.level:
+            self._engine.configure({"WeightsFile": str(_weights_file(level))})
+            self.level = level
+            self._game = object()  # drop results cached from the previous net
+
+    def policy(self, fen: str) -> dict[str, float]:
+        """Maia's move probabilities for `fen` ({uci: 0–1}); empty if unreadable."""
+        strings: list[str] = []
+        with self._engine.analysis(chess.Board(fen), chess.engine.Limit(nodes=1), game=self._game) as analysis:
+            for info in analysis:
+                if "string" in info:
+                    strings.append(info["string"])
+        return parse_policy(strings)
+
+    def get_best_move(self, fen: str, time_limit: float = 0.1) -> Optional[str]:
+        """Pick Maia's move for `fen`. `time_limit` is ignored (always 1 node)."""
+        board = chess.Board(fen)
+        if board.is_game_over():
+            return None
+        move = choose_from_policy(board, self.policy(fen), self._rng)
+        if move is None:
+            played = self._engine.play(board, chess.engine.Limit(nodes=1), game=self._game).move
+            move = played.uci() if played else None
+        return move
+
+    def close(self) -> None:
         self._engine.quit()
 
 

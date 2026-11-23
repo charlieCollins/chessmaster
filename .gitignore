@@ -12,3 +12,4 @@ chess.db-wal
 chess.db-shm
 frontend/dist/
 .chess.pids
+.superpowers/

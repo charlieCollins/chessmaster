@@ -44,6 +44,12 @@ Likely causes, in order:
       `uv sync` without a pyproject, frontend now uses same-origin `/api`,
       `npm run build` passes)
 - [ ] Clone/pull into `/opt/chess`, run `sudo deploy/setup.sh`
+- [ ] Maia opponent (optional — app hides Maia if missing): build lc0 v0.32.1 CPU-only
+      (`git clone --depth 1 --branch v0.32.1 https://github.com/LeelaChessZero/lc0.git`, then
+      `meson setup build/release --buildtype=release -Dgtest=false -Dplain_cuda=false -Donnx=false -Dopenblas=false -Daccelerate=false -Dmetal=disabled -Dblas=true -Dnative_arch=false`
+      and `meson compile -C build/release`), put `lc0` on PATH (or set `LC0_PATH` in `chess.service`),
+      and `gh release download v1.0 --repo CSSLab/maia-chess --pattern "maia-1*.pb.gz"` into
+      `MAIA_WEIGHTS_DIR` (default `~/.local/share/maia` of the service user)
 - [ ] Verify: `curl --unix-socket /run/chess/chess.sock http://localhost/api/games`
 
 ### 3. Lock it down BEFORE it's reachable

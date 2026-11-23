@@ -14,3 +14,7 @@ LIVE_EVAL_TIME      = 0.1   # full-strength eval shown after each move during pl
 
 # ── Game defaults ──────────────────────────────────────────────────────────────
 DEFAULT_ENGINE_ELO  = 1500
+
+# ── Maia (human-like opponent via lc0) ────────────────────────────────────────
+MAIA_LEVELS: list[int] = [1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900]
+MAIA_POLICY_FLOOR = 0.05   # only sample moves Maia gives at least this probability
