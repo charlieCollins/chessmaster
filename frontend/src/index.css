@@ -371,7 +371,7 @@ button.danger-ghost:hover:not(:disabled) {
 
 @media (max-width: 480px) {
   .stat-cell {
-    min-width: 100%;
+    min-width: calc(50% - 1px);   /* two per row on phones: shorter scroll */
   }
 
   .nav-btn {

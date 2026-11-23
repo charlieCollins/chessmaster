@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { API } from "../config";
 import GameIdBadge from "../components/GameIdBadge";
 import { type EngineKind, opponentLabel } from "../opponents";
+import { useNarrow } from "../viewport";
 
 interface GameRow {
   game_id: number;
@@ -60,6 +61,7 @@ export default function Home({ onPlay, onReview }: HomeProps) {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const deleteErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const narrow = useNarrow();
 
   function reload() {
     return Promise.all([
@@ -196,6 +198,45 @@ export default function Home({ onPlay, onReview }: HomeProps) {
             <span style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 8, display: "block" }}>
               Resigned or aborted games don't count — finish a game to see it here.
             </span>
+          </div>
+        ) : narrow ? (
+          // Phones: one compact card per game instead of the 11-column table
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {g.map((row) => {
+              const outcome = playerOutcome(row);
+              const outcomeColor = outcome === "Win" ? "var(--win)" : outcome === "Loss" ? "var(--loss)" : "var(--draw)";
+              return (
+                <div key={row.game_id} style={{ background: "var(--surface)", border: "1px solid var(--border)",
+                  borderRadius: "var(--radius)", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ color: outcomeColor, fontWeight: 600, minWidth: 34 }}>{outcome}</span>
+                    <span className="mono" style={{ fontSize: 13 }}>{opponentLabel(row.engine, row.engine_elo)}</span>
+                    <span style={{ marginLeft: "auto" }}><GameIdBadge id={row.public_id} size={11} /></span>
+                  </div>
+                  <div className="mono dim" style={{ fontSize: 11, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <span style={{ textTransform: "capitalize" }}>{row.player_color}</span>
+                    <span>{Math.ceil(row.move_count / 2)} moves</span>
+                    <span>{row.accuracy !== null ? `${Math.round(row.accuracy)}% acc` : "not analyzed"}</span>
+                    {row.assisted && <span>hint used</span>}
+                    <span>{fmtDate(row.played_at)}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                    <button onClick={() => onReview(row.game_id)} style={{ fontSize: 12, padding: "6px 16px" }}>Review</button>
+                    <div style={{ width: DELETE_CELL_WIDTH, display: "flex", gap: 4 }}>
+                      {confirmDeleteId === row.game_id ? (
+                        <>
+                          <button className="danger-ghost" style={{ ...DELETE_BTN, flex: 1, color: "var(--loss)", fontWeight: 600 }}
+                            onClick={() => { deleteGame(row.game_id); setConfirmDeleteId(null); }}>Yes</button>
+                          <button className="ghost" style={{ ...DELETE_BTN, flex: 1 }} onClick={() => setConfirmDeleteId(null)}>No</button>
+                        </>
+                      ) : (
+                        <button className="danger-ghost" style={{ ...DELETE_BTN, flex: 1 }} onClick={() => setConfirmDeleteId(row.game_id)}>Delete</button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         ) : (
           <table className="data-table">

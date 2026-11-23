@@ -9,6 +9,7 @@ import { type EngineKind, opponentLabel, encodeOpponent, decodeOpponent } from "
 import { formatEval, describeEval, describeMoveDelta } from "../evalText";
 import { type AccuracySummary, describeResult, grade, estimateElo } from "../ratings";
 import GameIdBadge from "../components/GameIdBadge";
+import { useBoardSizeFor, useNarrow } from "../viewport";
 
 /** Returns every square on the path from→to (inclusive). For knights/pawns/kings
  *  there are no intermediates, so just [from, to] is returned. */
@@ -85,25 +86,15 @@ function engineModeTag(elo: number): string {
   return "UCI ELO";
 }
 
-// Responsive board size: reserves space for left (160px) + right (175px) sidebars + gaps + app padding
+// Board size: full width on phones; on wider screens it reserves room for the left (160px)
+// and right (175px) panels + gaps.
 const MIN_BOARD = 280;
-function computeBoardSize(max: number): number {
-  return Math.max(MIN_BOARD, Math.min(max, window.innerWidth - 48 - 160 - 175 - 40));
-}
-
-function useBoardSize(max: number = 540): number {
-  const [size, setSize] = useState(() => computeBoardSize(max));
-  useEffect(() => {
-    const handler = () => setSize(computeBoardSize(max));
-    window.addEventListener("resize", handler);
-    return () => window.removeEventListener("resize", handler);
-  }, [max]);
-  return size;
-}
+const SIDE_PANELS = 160 + 175 + 40;
 
 export default function Play({ onGameEnd, onGameActive }: PlayProps) {
   const boardTheme = useBoardTheme();
-  const boardSize = useBoardSize(540);
+  const boardSize = useBoardSizeFor(540, SIDE_PANELS, MIN_BOARD);
+  const narrow = useNarrow();
   const [state, setState]             = useState<GameState | null>(null);
   const [loading, setLoading]         = useState(false);
   const [hintLoading, setHintLoading] = useState(false);  // FIX 3: separate hint loading flag
@@ -728,10 +719,12 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
     : null;
 
   return (
-    <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
+    // Phones: one column, board first, then game state, then analysis
+    <div style={{ display: "flex", flexDirection: narrow ? "column" : "row", gap: narrow ? 14 : 20,
+      alignItems: narrow ? "stretch" : "flex-start" }}>
 
       {/* ── Left: Game State ──────────────────────── */}
-      <div style={{ ...colStyle, width: 160 }}>
+      <div style={{ ...colStyle, width: narrow ? "auto" : 160, order: narrow ? 2 : 0 }}>
         <div style={{ padding: "12px 14px", background: "var(--surface)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
           <div style={labelStyle}>Game</div>
           <div style={{ marginBottom: 10 }}><GameIdBadge id={state.publicId} /></div>
@@ -837,7 +830,7 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
       </div>
 
       {/* ── Center: Board ─────────────────────────── */}
-      <div style={{ flexShrink: 0, position: "relative" }}>
+      <div style={{ flexShrink: 0, position: "relative", order: narrow ? 1 : 0, alignSelf: narrow ? "center" : undefined }}>
         <Chessboard
           options={{
             position: state.fen,
@@ -890,7 +883,8 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
       </div>
 
       {/* ── Right: Analysis + Controls ────────────── */}
-      <div style={{ ...colStyle, width: 175, height: boardSize, justifyContent: "space-between" }}>
+      <div style={{ ...colStyle, width: narrow ? "auto" : 175, height: narrow ? "auto" : boardSize,
+        justifyContent: "space-between", order: narrow ? 3 : 0, gap: narrow ? 14 : colStyle.gap }}>
         {/* Top: analysis buttons — always present, disabled when N/A */}
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>

@@ -7,6 +7,7 @@ import { Chess } from "chess.js";
 import { type EngineKind, opponentLabel } from "../opponents";
 import { grade, estimateElo, type AccuracySummary } from "../ratings";
 import GameIdBadge from "../components/GameIdBadge";
+import { useBoardSizeFor, useNarrow } from "../viewport";
 
 const COLORS: Record<string, string> = {
   best:        "var(--best)",
@@ -121,20 +122,11 @@ function MoveCell({ m, currentPly, setCurrentPly, you, yourTint }: MoveCellProps
   );
 }
 
-// Responsive board size hook
-function useBoardSize(max: number): number {
-  const [size, setSize] = useState(() => Math.min(max, window.innerWidth - 48));
-  useEffect(() => {
-    const handler = () => setSize(Math.min(max, window.innerWidth - 48));
-    window.addEventListener("resize", handler);
-    return () => window.removeEventListener("resize", handler);
-  }, [max]);
-  return size;
-}
 
 export default function Review({ gameId }: ReviewProps) {
   const boardTheme = useBoardTheme();
-  const boardSize = useBoardSize(480);
+  const boardSize = useBoardSizeFor(480, 0);
+  const narrow = useNarrow();
   const [game, setGame]               = useState<GameData | null>(null);
   const [currentPly, setCurrentPly]   = useState(0);
   const [analyzing, setAnalyzing]     = useState(false);
@@ -361,7 +353,8 @@ export default function Review({ gameId }: ReviewProps) {
         );
       })()}
 
-      <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
+      <div style={{ display: "flex", flexDirection: narrow ? "column" : "row", gap: 20,
+        alignItems: narrow ? "stretch" : "flex-start" }}>
         {/* Board + nav */}
         <div style={{ flexShrink: 0 }}>
           <Chessboard

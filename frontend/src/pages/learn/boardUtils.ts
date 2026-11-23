@@ -1,19 +1,13 @@
 // frontend/src/pages/learn/boardUtils.ts
 // Non-component helpers shared by the lessons and openings.
-import { useEffect, useState } from "react";
 import { Chess } from "chess.js";
+import { useBoardSizeFor } from "../../viewport";
 
 export type SqStyles = Record<string, { backgroundColor: string }>;
 
-// Responsive board size hook (mirrors the one in Play.tsx / Review.tsx)
+// Board size: nearly full width on phones, up to `max` elsewhere.
 export function useBoardSize(max: number): number {
-  const [size, setSize] = useState(() => Math.min(max, window.innerWidth - 48));
-  useEffect(() => {
-    const handler = () => setSize(Math.min(max, window.innerWidth - 48));
-    window.addEventListener("resize", handler);
-    return () => window.removeEventListener("resize", handler);
-  }, [max]);
-  return size;
+  return useBoardSizeFor(max, 0, 200);
 }
 
 export function sq(squares: string[], color: string): SqStyles {
