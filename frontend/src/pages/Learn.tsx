@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { OpeningKey } from "../data/openings";
 import { getTopics, type TopicSummary, type TopicsResponse } from "./learn/api";
 import { OpeningDetail, OpeningsHub } from "./learn/Openings";
-import { PIECE_LESSONS } from "./learn/lessonMap";
+import TopicLesson from "./learn/TopicLesson";
 
 // Chess glyphs + a few symbols the UI font is known to have (others render as empty boxes)
 const ICONS: Record<string, string> = {
@@ -66,7 +66,6 @@ function TopicCard({ icon, title, description, footer, onClick }: {
 type View =
   | { kind: "hub" }
   | { kind: "topic"; slug: string }
-  | { kind: "piece"; slug: string }
   | { kind: "review" }
   | { kind: "openings"; key: OpeningKey | null };
 
@@ -83,17 +82,13 @@ export default function Learn() {
 
   const toHub = () => setView({ kind: "hub" });
 
-  if (view.kind === "piece") {
-    const Lesson = PIECE_LESSONS[view.slug];
-    return <Lesson onBack={toHub} />;
-  }
+  if (view.kind === "topic") return <TopicLesson slug={view.slug} onBack={toHub} />;
   if (view.kind === "openings" && !view.key)
     return <OpeningsHub onSelect={k => setView({ kind: "openings", key: k })} onBack={toHub} />;
   if (view.kind === "openings" && view.key)
     return <OpeningDetail openingKey={view.key} onBack={() => setView({ kind: "openings", key: null })} />;
 
-  const openTopic = (slug: string) =>
-    setView(PIECE_LESSONS[slug] ? { kind: "piece", slug } : { kind: "topic", slug });
+  const openTopic = (slug: string) => setView({ kind: "topic", slug });
 
   return (
     <div>
