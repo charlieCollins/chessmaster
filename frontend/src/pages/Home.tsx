@@ -40,6 +40,10 @@ function playerOutcome(g: GameRow): "Win" | "Loss" | "Draw" {
   return "Loss";
 }
 
+// Fixed footprint for the Delete / Yes·No cell so confirming doesn't resize the table
+const DELETE_CELL_WIDTH = 92;
+const DELETE_BTN: React.CSSProperties = { padding: "3px 0", fontSize: 11, minWidth: 0, textAlign: "center" };
+
 function fmtDate(iso: string | null) {
   if (!iso) return "—";
   return new Date(iso).toLocaleString(undefined, {
@@ -207,7 +211,7 @@ export default function Home({ onPlay, onReview }: HomeProps) {
                 <th>Analyzed</th>
                 <th title="Used Show Best hint">Hint</th>
                 <th></th>
-                <th></th>
+                <th style={{ width: DELETE_CELL_WIDTH }}></th>
               </tr>
             </thead>
             <tbody>
@@ -236,25 +240,30 @@ export default function Home({ onPlay, onReview }: HomeProps) {
                         Review
                       </button>
                     </td>
-                    <td>
-                      {confirmDeleteId === row.game_id ? (
-                        <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                          <span style={{ fontSize: 11, color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>Delete?</span>
-                          <button className="danger-ghost" style={{ padding: "3px 8px", fontSize: 11 }}
-                            onClick={() => { deleteGame(row.game_id); setConfirmDeleteId(null); }}>
-                            Yes
+                    <td style={{ width: DELETE_CELL_WIDTH }}>
+                      {/* Both states occupy the same fixed box so the table never reflows */}
+                      <div style={{ width: DELETE_CELL_WIDTH, display: "flex", gap: 4 }}>
+                        {confirmDeleteId === row.game_id ? (
+                          <>
+                            <button className="danger-ghost" title="Yes, delete this game"
+                              style={{ ...DELETE_BTN, flex: 1, color: "var(--loss)", fontWeight: 600 }}
+                              onClick={() => { deleteGame(row.game_id); setConfirmDeleteId(null); }}>
+                              Yes
+                            </button>
+                            <button className="ghost" title="Keep this game"
+                              style={{ ...DELETE_BTN, flex: 1 }}
+                              onClick={() => setConfirmDeleteId(null)}>
+                              No
+                            </button>
+                          </>
+                        ) : (
+                          <button className="danger-ghost" title="Delete this game (asks to confirm)"
+                            style={{ ...DELETE_BTN, flex: 1 }}
+                            onClick={() => setConfirmDeleteId(row.game_id)}>
+                            Delete
                           </button>
-                          <button className="ghost" style={{ padding: "3px 8px", fontSize: 11 }}
-                            onClick={() => setConfirmDeleteId(null)}>
-                            No
-                          </button>
-                        </span>
-                      ) : (
-                        <button className="danger-ghost" onClick={() => setConfirmDeleteId(row.game_id)}
-                          style={{ padding: "3px 8px", fontSize: 11 }}>
-                          Delete
-                        </button>
-                      )}
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
