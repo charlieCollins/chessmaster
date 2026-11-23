@@ -75,7 +75,11 @@ spawns a Stockfish process on a 1 GB e2-micro.
 - [ ] Corpus: convert the other downloaded books (Lasker *Chess Strategy* 168 diagrams,
       Staunton *Blue Book* 78, Lasker *Chess and Checkers* + Philidor — text only) using
       the same pipeline (`scripts/diagram_ocr/`).
-- [ ] Learn area: design + build theme lessons and drills from `corpus/topics/` (next step).
+- [x] Learn area course: topic lessons, Capablanca drills, puzzles near your rating, review queue
+      (`docs/superpowers/specs/2026-11-23-learn-course-design.md`).
+- [ ] Daily trainer ("Today"): mix due reviews, weakest themes from `learn_attempts`, and positions
+      from your own analysed game mistakes (deferred from the course by choice).
+- [ ] Hosting: the 2 GB puzzle DB on the e2-micro — ship a trimmed quality subset instead.
 
 - [ ] Resume in-progress games (today, leaving the Play page abandons the game;
       rows with `result = "*"` accumulate and are never shown)

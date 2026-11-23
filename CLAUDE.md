@@ -78,7 +78,9 @@ Use python-chess (`chess.pgn.read_game`) to replay positions when explaining.
 - `frontend/src/pages/Home.tsx` — Dashboard: win/loss stats + completed game history table
 - `frontend/src/pages/Play.tsx` — Interactive board, play vs engine, color/ELO selection, eval bar, hint, best-reply
 - `frontend/src/pages/Review.tsx` — Annotated game replay with nav controls, run-analysis button, accuracy score
-- `frontend/src/pages/Learn.tsx` — Lesson pages (Knights, Bishops, Rooks, Pawns, Queens, Kings, Openings hub + detail)
+- `frontend/src/pages/Learn.tsx` — Learn hub: corpus topics by group (from `/api/learn`), puzzle rating, review button, Openings card
+- `frontend/src/pages/learn/` — `TopicLesson` (Read → Find the move → Practise), `SolveBoard` (solve a line on the board: first try counts, retry, show solution, promotion), `solveLine.ts` (pure solving rules, vitest), `BookText`, `ReviewSession`, `api.ts` (typed `/api/learn` client), `PieceLessons.tsx` + `Openings.tsx` (the original hand-written lessons), `shared.tsx`/`boardUtils.ts`
+- `backend/learn_api.py` — `/api/learn` router; `learn_content.py` (topics + book.json → lessons/drills); `learn_progress.py` (Elo puzzle rating, 1/3/7/21-day review schedule, topic progress)
 - `frontend/src/data/openings.ts` — Opening data: 18 openings (58 lines) with SAN move sequences
 
 ## API Endpoints
@@ -97,6 +99,12 @@ Use python-chess (`chess.pgn.read_game`) to replay positions when explaining.
 | POST | `/api/engine/best` | Best move for any FEN (`{fen}`) — NOT tracked as assisted; rejects impossible positions (they crash Stockfish) |
 | GET | `/api/games` | List completed games (with player `accuracy`) |
 | GET | `/api/stats` | Aggregate win/loss/accuracy stats |
+| GET | `/api/learn/topics` | Topics by group with progress, `rating` (puzzle rating, starts 1300), `reviews_due` |
+| GET | `/api/learn/topics/{slug}` | Ideas, Capablanca sections (blocks), drills (diagram FEN + main line), `puzzles_available` |
+| GET | `/api/learn/topics/{slug}/puzzles?n=10` | Unseen quality Lichess puzzles near your rating (±150, widened to ±300); 503 if the puzzle DB isn't built |
+| POST | `/api/learn/attempts` | Record a try (`kind` puzzle/book, `context` lesson/review, `solved` first try, `revealed`). Only a first lesson attempt at a puzzle is rated; misses enter the review queue |
+| GET | `/api/learn/reviews` | Positions due for review, oldest first |
+| POST | `/api/learn/judge` | `{fen, move, expected}` → is a different move in a book drill also good (win% loss < 5) or mate? |
 
 **Note on `GET /api/game/{id}` moves:** Per-move `eval_cp` and `eval_loss_cp` are stored in the DB during analysis but NOT returned in the response. Only `classification` and `best_uci` are returned. Live evals are returned during gameplay via `POST /api/game/{id}/move`; both come from the full-strength engine.
 
@@ -181,6 +189,12 @@ moves
                             -- added to old DBs by init_db() migration). Classification uses win%, not this.
   best_uci       TEXT       -- Stockfish's best move UCI string at that position (populated during analysis, nullable)
   UNIQUE INDEX ux_moves_game_ply (game_id, ply)
+
+learn_attempts   -- every try at a Learn position (the daily trainer's input)
+  kind ("puzzle"|"book"), ref (Lichess id | "<book>:<Fig>"), topic, context ("lesson"|"review"),
+  solved (first try), revealed, seconds, puzzle_rating, rating_before/rating_after (null = unrated), created_at
+learn_reviews    -- spaced review queue: kind, ref (unique together), topic, step (0..3 → 1/3/7/21 days), due_at
+learn_state      -- key/value: puzzle_rating, rated_attempts
 ```
 
 ## Testing
@@ -188,6 +202,7 @@ moves
 All tests require the venv activated and Stockfish binary available:
 ```bash
 source .venv/bin/activate && pytest -v
+cd frontend && npm test     # vitest: pure frontend logic (learn/solveLine.ts)
 ```
 
 Test files use `os.environ["DATABASE_URL"] = "sqlite://"` at module level (before backend imports) to redirect to an in-memory database.
@@ -207,5 +222,5 @@ Test files use `os.environ["DATABASE_URL"] = "sqlite://"` at module level (befor
 
 - **Phase 1** ✅ COMPLETE: Play vs engine + save + post-game analysis + hint + best-reply + openings lessons
 - **Phase 2**: Weakness detection across game history, dashboard
-- **Phase 3**: Concept training (pick a topic, get drills from your games)
+- **Phase 3** (in progress): Concept training — Learn course done (topics, Capablanca drills, puzzles, review queue); next: daily trainer using `learn_attempts` + your game mistakes
 - **Phase 4**: Chess.com PGN import

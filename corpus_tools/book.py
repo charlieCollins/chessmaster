@@ -12,6 +12,7 @@ Inputs: the raw zip under corpus/raw/ and the curated diagrams.tsv
 """
 from __future__ import annotations
 
+import json
 import re
 import unicodedata
 import zipfile
@@ -115,6 +116,7 @@ class _Book:
         self.diagrams = load_diagrams(self.out / "diagrams.tsv")
         self.report: dict = {"diagrams": {}, "games": {}}
         self.sections: list[dict] = []
+        self.book_diagrams: dict[str, dict] = {}
 
     # -- input -------------------------------------------------------------
     def read(self) -> list[dict]:
@@ -156,18 +158,38 @@ class _Book:
                     title = title_case(m.group(2))
                     self.sections.append({"section": m.group(1), "title": title, "file": file_name,
                                           "anchor": github_anchor(f"{m.group(1)}. {title}"), "diagrams": []})
+                elif self.sections:
+                    self._block({"kind": "para", "text": b["text"]})
                 md += [f"## {m.group(1)}. {title}" if m else f"*{b['text'].strip('*')}*", ""]
             elif k == "para":
+                self._block({"kind": "para", "text": b["text"]})
                 md += [b["text"], ""]
             elif k == "moves":
+                self._block({"kind": "moves", "text": b["text"]})
                 md += ["  \n".join(f"> {ln}" for ln in b["text"].split("\n")), ""]
             elif k == "figure":
                 fig = _fig(b["src"])
                 if fig:
+                    self._block({"kind": "diagram", "fig": fig})
                     if self.sections:
                         self.sections[-1]["diagrams"].append(fig)
                     md += [self._part_one_diagram(fig, body[i + 1:]), ""]
         return md
+
+    def _block(self, block: dict) -> None:
+        """Record a block of the current Part I section (for book.json)."""
+        if self.sections:
+            self.sections[-1].setdefault("blocks", []).append(block)
+
+    def _record_diagram(self, fig: str, fen: str, kind: str, note: str, start=None, moves=()) -> None:
+        b = start.copy() if start is not None else None
+        sans = []
+        for mv in moves:
+            sans.append(b.san(mv))
+            b.push(mv)
+        self.book_diagrams[fig] = {"fen": fen, "kind": kind, "note": note,
+                                   "section": self.sections[-1]["section"] if self.sections else None,
+                                   "line_uci": [mv.uci() for mv in moves], "line_san": sans}
 
     def _part_one_diagram(self, fig: str, following: list[dict]) -> str:
         row = self.diagrams.get(fig)
@@ -182,12 +204,14 @@ class _Book:
         fen, kind = row["fen"], row["kind"]
         if kind != "position":
             self.report["diagrams"][fig] = {"status": kind, "checked_moves": 0}
+            self._record_diagram(fig, fen, kind, row["note"])
             return _diagram_md(fig, fen, kind, row["note"], "*Illustration — not a complete game position.*")
         board = chess.Board(fen)
         line = mainline_after(board, section)
         self.report["diagrams"][fig] = {"status": "position", "checked_moves": len(line.sans), "error": line.error}
         start = board.copy()
         start.turn = line.side
+        self._record_diagram(fig, start.fen(), kind, row["note"], start, line.moves)
         caption = f"*{_side(start)} to move.*"
         if line.moves:
             caption += f" **Main line:** {start.variation_san(line.moves)}"
@@ -332,4 +356,9 @@ def build_book(spec: BookSpec, raw: Path, books: Path) -> dict:
         f"{s['section']}\t{s['title']}\t{s['file']}\t{s['anchor']}\t{','.join(s['diagrams'])}" for s in bk.sections]
     (bk.out / "sections.tsv").write_text("\n".join(rows) + "\n")
     (bk.out / "README.md").write_text(_readme(spec, bk.report, bk.sections))
+    book = {"slug": spec.slug, "title": spec.title, "author": spec.author,
+            "sections": [{"section": s["section"], "title": s["title"], "blocks": s.get("blocks", [])}
+                         for s in bk.sections],
+            "diagrams": bk.book_diagrams}
+    (bk.out / "book.json").write_text(json.dumps(book, ensure_ascii=False, indent=1) + "\n")
     return bk.report
