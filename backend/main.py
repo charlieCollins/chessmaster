@@ -10,6 +10,7 @@ import chess
 
 from .db import get_db, Game, Move, init_db, SessionLocal
 from .engine import ChessEngine, EngineSlot, MaiaEngine, maia_available
+from .learn_api import router as learn_router
 from .game_utils import reconstruct_board, generate_pgn, accuracy_summary
 from .analysis import analyze_game
 from .game_files import write_game_file, delete_game_file, write_missing_game_files
@@ -64,6 +65,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+app.include_router(learn_router)
 
 app.add_middleware(
     CORSMiddleware,
