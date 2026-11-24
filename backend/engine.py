@@ -225,7 +225,9 @@ class MaiaEngine:
             raise ValueError(f"Maia level must be one of {MAIA_LEVELS}")
         self._rng = rng or random.Random()
         self._engine = chess.engine.SimpleEngine.popen_uci(
-            [LC0_PATH, f"--weights={_weights_file(level)}", "--threads=1"],
+            # Maia plays at 1 node, so lc0's network cache is never reused: a tiny one saves
+            # ~85 MB (101 → 15 MB), which matters on the 1 GB server.
+            [LC0_PATH, f"--weights={_weights_file(level)}", "--threads=1", "--nncache=1000"],
             stderr=open(os.devnull, "w"),
         )
         # Raw policy (lc0 defaults to a flattening temperature of 1.359), so we

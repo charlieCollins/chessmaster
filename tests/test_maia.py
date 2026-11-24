@@ -136,3 +136,20 @@ def test_maia_unavailable_when_lc0_cannot_run(monkeypatch, tmp_path):
     engine._lc0_runs.cache_clear()
     assert engine.maia_available() is True
     engine._lc0_runs.cache_clear()
+
+
+@needs_maia
+def test_maia_lc0_stays_small_in_memory():
+    """Maia evaluates one position per move, so lc0's network cache is wasted memory —
+    on the 1 GB server it pushed the app over its memory cap (OOM kill)."""
+    import chess
+    eng = MaiaEngine(1300)
+    try:
+        board = chess.Board()
+        board.push_san("e4")
+        eng.get_best_move(board)
+        pid = eng._engine.transport.get_pid()
+        rss_kb = next(int(l.split()[1]) for l in open(f"/proc/{pid}/status") if l.startswith("VmRSS:"))
+        assert rss_kb < 40 * 1024, f"lc0 uses {rss_kb // 1024} MB"
+    finally:
+        eng.close()
