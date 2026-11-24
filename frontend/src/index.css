@@ -98,10 +98,10 @@ h1, h2, h3 { line-height: 1.2; }
 
 .app-main {
   flex: 1;
-  max-width: 1040px;
+  max-width: 1120px;
   width: 100%;
   margin: 0 auto;
-  padding: 36px 28px 64px;
+  padding: 36px 28px 28px;
 }
 
 /* ── Buttons ────────────────────────────────────────────── */
