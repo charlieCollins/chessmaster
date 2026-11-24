@@ -9,7 +9,8 @@ import { type EngineKind, opponentLabel, encodeOpponent, decodeOpponent } from "
 import { formatEval, describeEval, describeMoveDelta } from "../evalText";
 import { type AccuracySummary, describeResult, grade, estimateElo } from "../ratings";
 import GameIdBadge from "../components/GameIdBadge";
-import { useBoardSizeFor, useNarrow } from "../viewport";
+import { useBoardSizeFor, useNarrow, DRAG_ACTIVATION_PX } from "../viewport";
+import { tapAction, selectionStyles, layerStyles, selectedLabel } from "../boardTap";
 
 /** Returns every square on the path from→to (inclusive). For knights/pawns/kings
  *  there are no intermediates, so just [from, to] is returned. */
@@ -274,6 +275,9 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
   }): boolean {
     // Board input is blocked while the engine is replying
     if (!state || state.gameOver || loading || !targetSquare) return false;
+    // A finger that wobbled onto the same square was a tap, not a drag
+    if (sourceSquare === targetSquare) { onSquareClick({ square: sourceSquare }); return false; }
+    setSelectedSquare(null);
     if (isLegalPromotion(sourceSquare, targetSquare)) {
       setPendingPromotion({ from: sourceSquare, to: targetSquare });
       return true;
@@ -282,20 +286,15 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
     return true;
   }
 
-  function onSquareClick({ square, piece }: { square: string; piece?: { pieceType: string } | null }) {
+  function onSquareClick({ square }: { square: string }) {
     if (!state || state.gameOver || loading) return;
-    if (selectedSquare) {
+    const action = tapAction(state.fen, selectedSquare, square, state.playerColor === "white" ? "w" : "b");
+    if (action.kind === "select") setSelectedSquare(action.square as Square);
+    else if (action.kind === "deselect") setSelectedSquare(null);
+    else if (action.kind === "move") {
       setSelectedSquare(null);
-      if (isLegalPromotion(selectedSquare, square)) {
-        setPendingPromotion({ from: selectedSquare, to: square });
-        return;
-      }
-      makeMove(selectedSquare + square);
-    } else if (piece) {
-      const isPlayerPiece =
-        (state.playerColor === "white" && piece.pieceType.startsWith("w")) ||
-        (state.playerColor === "black" && piece.pieceType.startsWith("b"));
-      if (isPlayerPiece) setSelectedSquare(square as Square);
+      if (isLegalPromotion(action.from, action.to)) setPendingPromotion({ from: action.from, to: action.to });
+      else makeMove(action.from + action.to);
     }
   }
 
@@ -604,7 +603,7 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
   };
 
   const labelStyle: React.CSSProperties = {
-    fontSize: 11,
+    fontSize: narrow ? 12 : 11,
     fontFamily: "var(--font-mono)",
     letterSpacing: "0.08em",
     textTransform: "uppercase",
@@ -624,7 +623,7 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
       gap: 10,
     };
     return (
-      <div style={{ maxWidth: 300, display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ maxWidth: narrow ? 480 : 300, display: "flex", flexDirection: "column", gap: 12 }}>
 
         <div style={cardStyle}>
           <div style={labelStyle}>Play as</div>
@@ -658,9 +657,9 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
               border: "1px solid var(--border-hi)",
               color: "var(--text)",
               borderRadius: "var(--radius)",
-              padding: "7px 10px",
+              padding: narrow ? "10px 12px" : "7px 10px",
               fontFamily: "var(--font-ui)",
-              fontSize: 13,
+              fontSize: narrow ? 16 : 13,
               cursor: "pointer",
             }}
           >
@@ -703,7 +702,7 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
           </div>
         )}
 
-        <button className="primary" onClick={startGame} disabled={loading} style={{ width: "100%", padding: "9px 0" }}>
+        <button className={`primary${narrow ? " tall" : ""}`} onClick={startGame} disabled={loading} style={{ width: "100%", padding: "9px 0" }}>
           {loading ? "Starting…" : "Start Game"}
         </button>
       </div>
@@ -718,244 +717,318 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
     ? describeMoveDelta(pov * state.lastMoveEvals.before, pov * state.lastMoveEvals.after)
     : null;
 
+  // Phones get larger type everywhere (desktop sizes unchanged)
+  const small = narrow ? 13 : 11;
+  const body = narrow ? 15 : 12;
+  const label = labelStyle;
+  const card: React.CSSProperties = {
+    padding: "12px 14px", background: "var(--surface)", borderRadius: "var(--radius)", border: "1px solid var(--border)",
+  };
+  const errorText = (text: string) => (
+    <div style={{ fontFamily: "var(--font-mono)", fontSize: small + 1, color: "var(--loss)", marginTop: 4 }}>{text}</div>
+  );
+
+  const baseHighlights = {
+    ...(hintMove         ? qualitySquares(hintMove.from_sq,          hintMove.to_sq,          "best") : {}),
+    ...(replyMove        ? qualitySquares(replyMove.from_sq,         replyMove.to_sq,         "best") : {}),
+    ...(lastMoveHighlight   ? qualitySquares(lastMoveHighlight.from,   lastMoveHighlight.to,   lastMoveHighlight.quality)   : {}),
+    ...(engineMoveHighlight ? qualitySquares(engineMoveHighlight.from, engineMoveHighlight.to, engineMoveHighlight.quality) : {}),
+    ...(showBestLastHighlight ? qualitySquares(showBestLastHighlight.from, showBestLastHighlight.to, "best") : {}),
+  };
+  const selectedText = selectedSquare ? selectedLabel(state.fen, selectedSquare) : null;
+
+  const gameInfoCard = (
+    <div style={card}>
+      <div style={label}>Game</div>
+      <div style={{ marginBottom: 10 }}><GameIdBadge id={state.publicId} /></div>
+      <div style={label}>Playing as</div>
+      <div style={{ fontFamily: "var(--font-mono)", color: "var(--text-bright)", textTransform: "capitalize" }}>
+        {state.playerColor}
+      </div>
+      <div style={{ ...label, marginTop: 10 }}>Opponent</div>
+      <div style={{ fontFamily: "var(--font-mono)", color: "var(--text-bright)" }}>
+        {opponentLabel(state.engine, state.engineElo)}
+      </div>
+      <div style={{ fontFamily: "var(--font-mono)", fontSize: small, color: "var(--text-dim)", marginTop: 1 }}>
+        {state.engine === "maia" ? "human-like" : engineModeTag(state.engineElo)}
+      </div>
+      {state.assisted && (
+        <div style={{ fontFamily: "var(--font-mono)", fontSize: small, color: "var(--text-dim)", marginTop: 6 }}>
+          assisted
+        </div>
+      )}
+    </div>
+  );
+
+  // Phones: one line above the board instead of the info card
+  const gameInfoStrip = (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+      <div style={{ fontSize: 15, color: "var(--text-bright)" }}>
+        vs <b style={{ fontWeight: 600 }}>{opponentLabel(state.engine, state.engineElo)}</b>
+        <span style={{ color: "var(--text-dim)", fontSize: 13 }}>
+          {" "}· you play {state.playerColor}{state.assisted ? " · assisted" : ""}
+        </span>
+      </div>
+      <GameIdBadge id={state.publicId} />
+    </div>
+  );
+
+  const evalCard = evalPos !== null && (
+    <div style={card}>
+      <div style={label}>Position</div>
+      <div
+        title="Engine evaluation from your side. +1.00 ≈ the value of one pawn — the advantage can come from material, activity, king safety, etc. M = forced mate in N moves."
+        style={{ fontFamily: "var(--font-mono)", fontSize: narrow ? 22 : 18, color: evalPos >= 0 ? "var(--win)" : "var(--loss)", fontWeight: 500, cursor: "help" }}
+      >
+        {formatEval(evalPos)}
+      </div>
+      {(() => {
+        const clamped = Math.max(-500, Math.min(500, evalPos));
+        const whitePct = Math.round(50 + (clamped / 500) * 30);
+        return (
+          <div style={{ height: 8, borderRadius: 4, background: "var(--border)", overflow: "hidden", marginTop: 6 }}>
+            <div style={{ height: "100%", width: `${whitePct}%`, background: "var(--text-bright)", borderRadius: 4, transition: "width 0.3s ease" }} />
+          </div>
+        );
+      })()}
+      <div style={{ fontSize: small, color: "var(--text-dim)", fontFamily: "var(--font-mono)", marginTop: 4 }}>
+        {describeEval(evalPos)}
+      </div>
+      {lastMoveText !== null && (() => {
+        const tone = lastMoveText.startsWith("▲") ? "var(--good)" : lastMoveText.startsWith("▼") ? "var(--loss)" : "var(--text-dim)";
+        return (
+          <>
+            <div style={{ ...label, marginTop: 10 }}>Last move</div>
+            <span
+              title="How much the evaluation changed because of your move alone"
+              style={{ color: tone, fontSize: small, fontFamily: "var(--font-mono)", cursor: "help" }}
+            >
+              {lastMoveText}
+            </span>
+          </>
+        );
+      })()}
+    </div>
+  );
+
+  const gameOverCard = state.gameOver && (
+    <div style={card}>
+      {(() => {
+        const { headline, detail } = describeResult(state.result, state.termination, state.playerColor);
+        const tone = headline === "You won" ? "var(--win)" : headline === "You lost" ? "var(--loss)" : "var(--draw)";
+        return (
+          <>
+            <div style={label}>Game over</div>
+            <div style={{ fontFamily: "var(--font-display)", fontSize: narrow ? 26 : 20, color: tone, lineHeight: 1.1 }}>{headline}</div>
+            <div style={{ fontSize: body, color: "var(--text)", marginTop: 4 }}>{detail}</div>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: small, color: "var(--text-dim)", marginTop: 2 }}>{state.result}</div>
+          </>
+        );
+      })()}
+
+      <div style={{ borderTop: "1px solid var(--border)", marginTop: 10, paddingTop: 10,
+        display: narrow ? "flex" : "block", gap: 24 }}>
+        {postGame?.status === "analyzing" && (
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: small, color: "var(--text-dim)" }}>Analyzing…</div>
+        )}
+        {postGame?.status === "error" && (
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: small, color: "var(--loss)" }}>Analysis unavailable</div>
+        )}
+        {postGame?.status === "done" && !postGame.you && (
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: small, color: "var(--text-dim)" }}>No moves to rate</div>
+        )}
+        {postGame?.status === "done" && ([["You", postGame.you], ["Opponent", postGame.opp]] as const).map(([who, acc]) => {
+          if (!acc) return null;
+          const pct = Math.round(acc.pct);
+          const { label: gradeLabel, color } = grade(pct);
+          return (
+            <div key={who} style={{ marginBottom: 8 }}>
+              <div style={{ ...label, color: who === "You" ? "var(--gold)" : "var(--text-dim)" }}>{who}</div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                <span style={{ fontFamily: "var(--font-display)", fontSize: narrow ? 24 : 20, color, lineHeight: 1 }}>{pct}%</span>
+                <span style={{ fontFamily: "var(--font-display)", fontSize: narrow ? 18 : 15, color: "var(--gold)" }} title="Rough estimate from accuracy, not a rating">~{estimateElo(pct)}</span>
+              </div>
+              <div style={{ fontSize: small, color, fontWeight: 600 }}>{gradeLabel}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const analysisButtons: [string, () => void, boolean, boolean, boolean, string][] = [
+    // label, onClick, busy, disabled, error, title
+    ["Show Best Next", requestHint, hintLoading, hintLoading || loading || state.gameOver, hintError,
+      "Full-strength Stockfish best next move (marks game as assisted)"],
+    ["Show Best Last", requestShowBestLast, showBestLastLoading, showBestLastLoading || !prevFen, showBestLastError,
+      "Show the best move from your last position (not assisted)"],
+    ["Eval Last Move", requestPrevBest, prevBestLoading, prevBestLoading || !prevFen, prevBestError,
+      "Classify your last move by eval loss"],
+    ["Show Best Last Reply", requestReply, replyLoading, replyLoading || !replyFen, replyError,
+      "Best opponent move in response to your last move"],
+  ];
+
+  const analysisSection = (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ ...label, fontSize: narrow ? 12 : 10, letterSpacing: "0.1em", marginBottom: 0 }}>Analysis</div>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", padding: narrow ? "6px 0" : 0 }}
+          title="Auto-evaluate every move for both players">
+          <input type="checkbox" checked={autoEval} onChange={e => setAutoEval(e.target.checked)}
+            style={{ cursor: "pointer", width: narrow ? 20 : undefined, height: narrow ? 20 : undefined }} />
+          <span style={{ fontSize: narrow ? 14 : 10, fontFamily: "var(--font-mono)", color: "var(--text-dim)" }}>
+            {narrow ? "auto-eval" : "auto"}
+          </span>
+        </label>
+      </div>
+
+      <div style={narrow ? { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 } : { display: "flex", flexDirection: "column", gap: 10 }}>
+        {analysisButtons.map(([text, onClick, busy, disabled, error, title]) => (
+          <div key={text}>
+            <button className={narrow ? "tall" : undefined} style={{ width: "100%" }} onClick={onClick} disabled={disabled} title={title}>
+              {busy ? "Thinking…" : text}
+            </button>
+            {error && errorText("unavailable")}
+          </div>
+        ))}
+      </div>
+
+      {!narrow && loading && <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-dim)" }}>engine thinking…</div>}
+      {!narrow && moveError && <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--loss)" }}>{moveError}</div>}
+    </div>
+  );
+
+  const legend = (
+    <div style={narrow
+      ? { display: "flex", flexWrap: "wrap", gap: "6px 14px" }
+      : { display: "flex", flexDirection: "column", gap: 3, borderTop: "1px solid var(--border)", paddingTop: 8 }}>
+      {QUALITIES.map((q) => (
+        <div key={q} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <div style={{ width: narrow ? 12 : 10, height: narrow ? 12 : 10, borderRadius: 2, flexShrink: 0, background: qualityTint(q, 75), boxShadow: `0 0 0 1.5px ${qualityTint(q, 90)}` }} />
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: narrow ? 13 : 10, color: "var(--text-dim)", letterSpacing: "0.04em", textTransform: "capitalize" }}>{q}</span>
+        </div>
+      ))}
+    </div>
+  );
+
+  const controls = state.gameOver ? (
+    <>
+      <button className={`primary${narrow ? " tall" : ""}`} style={narrow ? { flex: 1 } : undefined} onClick={() => onGameEnd(state!.gameId)}>Review Game</button>
+      <button className={narrow ? "tall" : undefined} style={narrow ? { flex: 1 } : undefined} onClick={() => setState(null)}>New Game</button>
+    </>
+  ) : (
+    <>
+      <button className={narrow ? "tall" : undefined} style={narrow ? { flex: 1 } : undefined} onClick={takeback}
+        disabled={loading || takebackLoading || !prevFen} title="Undo your last move and the engine's reply (counts as assisted)">
+        {takebackLoading ? "Taking back…" : "Take Back"}
+      </button>
+      <button className={narrow ? "tall" : undefined} style={narrow ? { flex: 1 } : undefined} onClick={resign} disabled={loading}>Resign</button>
+      <button className="danger-ghost" style={narrow ? { flex: "0 0 auto" } : undefined} onClick={abort} disabled={loading}>Abort</button>
+    </>
+  );
+
+  const board = (
+    <div style={{ flexShrink: 0, position: "relative", alignSelf: narrow ? "center" : undefined }}>
+      <Chessboard
+        options={{
+          position: state.fen,
+          onPieceDrop: onDrop,
+          onSquareClick: onSquareClick,
+          boardOrientation: state.playerColor,
+          boardStyle: { width: boardSize, height: boardSize, borderRadius: "var(--radius)" },
+          darkSquareStyle: { backgroundColor: boardTheme.dark },
+          lightSquareStyle: { backgroundColor: boardTheme.light },
+          squareStyles: layerStyles(baseHighlights, selectionStyles(state.fen, selectedSquare)),
+          dragActivationDistance: DRAG_ACTIVATION_PX,
+          allowDrawingArrows: !narrow,
+        }}
+      />
+
+      {pendingPromotion && (
+        <div style={{
+          position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
+          background: "rgba(0,0,0,0.7)", display: "flex",
+          alignItems: "center", justifyContent: "center", zIndex: 100,
+          borderRadius: "var(--radius)",
+        }}>
+          <div style={{
+            background: "var(--surface)", border: "1px solid var(--border-hi)",
+            borderRadius: "var(--radius-lg)", padding: "20px 24px",
+            display: "flex", flexDirection: "column", gap: 12, alignItems: "center",
+          }}>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-dim)", letterSpacing: "0.1em" }}>PROMOTE TO</div>
+            <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr 1fr" : "repeat(4, auto)", gap: 8 }}>
+              {([["q","♛ Queen"],["r","♜ Rook"],["b","♝ Bishop"],["n","♞ Knight"]] as const).map(([piece, text], i) => (
+                <button key={piece} className={`primary${narrow ? " tall" : ""}`} autoFocus={i === 0} onClick={() => {
+                  makeMove(pendingPromotion.from + pendingPromotion.to + piece);
+                  setPendingPromotion(null);
+                }} style={{ padding: "8px 16px", fontSize: narrow ? 16 : 13 }}>
+                  {text}
+                </button>
+              ))}
+            </div>
+            <button className="ghost" style={{ fontSize: narrow ? 14 : 11 }} onClick={() => setPendingPromotion(null)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  // ── Phone layout: info line, board, status, controls, then analysis ──
+  if (narrow) {
+    const status = moveError
+      ? { text: moveError, color: "var(--loss)" }
+      : loading
+      ? { text: "Opponent is thinking…", color: "var(--text-dim)" }
+      : state.gameOver
+      ? null
+      : selectedText
+      ? { text: `${selectedText} — tap a dot to move it`, color: "var(--gold)" }
+      : { text: "Your move — tap a piece, or drag it", color: "var(--text-dim)" };
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {gameInfoStrip}
+        {board}
+        {status && (
+          <div aria-live="polite" style={{ minHeight: 24, fontSize: 15, fontWeight: 500, color: status.color, textAlign: "center" }}>
+            {status.text}
+          </div>
+        )}
+        {gameOverCard}
+        <div style={{ display: "flex", gap: 8 }}>{controls}</div>
+        {evalCard}
+        {analysisSection}
+        {legend}
+      </div>
+    );
+  }
+
   return (
-    // Phones: one column, board first, then game state, then analysis
-    <div style={{ display: "flex", flexDirection: narrow ? "column" : "row", gap: narrow ? 14 : 20,
-      alignItems: narrow ? "stretch" : "flex-start" }}>
+    <div style={{ display: "flex", flexDirection: "row", gap: 20, alignItems: "flex-start" }}>
 
       {/* ── Left: Game State ──────────────────────── */}
-      <div style={{ ...colStyle, width: narrow ? "auto" : 160, order: narrow ? 2 : 0 }}>
-        <div style={{ padding: "12px 14px", background: "var(--surface)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
-          <div style={labelStyle}>Game</div>
-          <div style={{ marginBottom: 10 }}><GameIdBadge id={state.publicId} /></div>
-          <div style={labelStyle}>Playing as</div>
-          <div style={{ fontFamily: "var(--font-mono)", color: "var(--text-bright)", textTransform: "capitalize" }}>
-            {state.playerColor}
-          </div>
-          <div style={{ ...labelStyle, marginTop: 10 }}>Opponent</div>
-          <div style={{ fontFamily: "var(--font-mono)", color: "var(--text-bright)" }}>
-            {opponentLabel(state.engine, state.engineElo)}
-          </div>
-          <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-dim)", marginTop: 1 }}>
-            {state.engine === "maia" ? "human-like" : engineModeTag(state.engineElo)}
-          </div>
-          {state.assisted && (
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-dim)", marginTop: 6 }}>
-              assisted
-            </div>
-          )}
-        </div>
-
-        {evalPos !== null && (
-          <div style={{ padding: "12px 14px", background: "var(--surface)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
-            <div style={labelStyle}>Position</div>
-            <div
-              title="Engine evaluation from your side. +1.00 ≈ the value of one pawn — the advantage can come from material, activity, king safety, etc. M = forced mate in N moves."
-              style={{ fontFamily: "var(--font-mono)", fontSize: 18, color: evalPos >= 0 ? "var(--win)" : "var(--loss)", fontWeight: 500, cursor: "help" }}
-            >
-              {formatEval(evalPos)}
-            </div>
-            {(() => {
-              const clamped = Math.max(-500, Math.min(500, evalPos));
-              const whitePct = Math.round(50 + (clamped / 500) * 30);
-              return (
-                <div style={{ height: 8, borderRadius: 4, background: "var(--border)", overflow: "hidden", marginTop: 6 }}>
-                  <div style={{ height: "100%", width: `${whitePct}%`, background: "var(--text-bright)", borderRadius: 4, transition: "width 0.3s ease" }} />
-                </div>
-              );
-            })()}
-            <div style={{ fontSize: 11, color: "var(--text-dim)", fontFamily: "var(--font-mono)", marginTop: 4 }}>
-              {describeEval(evalPos)}
-            </div>
-            {lastMoveText !== null && (() => {
-              const tone = lastMoveText.startsWith("▲") ? "var(--good)" : lastMoveText.startsWith("▼") ? "var(--loss)" : "var(--text-dim)";
-              return (
-                <>
-                  <div style={{ ...labelStyle, marginTop: 10 }}>Last move</div>
-                  <span
-                    title="How much the evaluation changed because of your move alone"
-                    style={{ color: tone, fontSize: 11, fontFamily: "var(--font-mono)", cursor: "help" }}
-                  >
-                    {lastMoveText}
-                  </span>
-                </>
-              );
-            })()}
-          </div>
-        )}
-
-        {state.gameOver && (
-          <div style={{ padding: "12px 14px", background: "var(--surface)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
-            {(() => {
-              const { headline, detail } = describeResult(state.result, state.termination, state.playerColor);
-              const tone = headline === "You won" ? "var(--win)" : headline === "You lost" ? "var(--loss)" : "var(--draw)";
-              return (
-                <>
-                  <div style={labelStyle}>Game over</div>
-                  <div style={{ fontFamily: "var(--font-display)", fontSize: 20, color: tone, lineHeight: 1.1 }}>{headline}</div>
-                  <div style={{ fontSize: 12, color: "var(--text)", marginTop: 4 }}>{detail}</div>
-                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}>{state.result}</div>
-                </>
-              );
-            })()}
-
-            <div style={{ borderTop: "1px solid var(--border)", marginTop: 10, paddingTop: 10 }}>
-              {postGame?.status === "analyzing" && (
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-dim)" }}>Analyzing…</div>
-              )}
-              {postGame?.status === "error" && (
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--loss)" }}>Analysis unavailable</div>
-              )}
-              {postGame?.status === "done" && !postGame.you && (
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-dim)" }}>No moves to rate</div>
-              )}
-              {postGame?.status === "done" && ([["You", postGame.you], ["Opponent", postGame.opp]] as const).map(([label, acc]) => {
-                if (!acc) return null;
-                const pct = Math.round(acc.pct);
-                const { label: gradeLabel, color } = grade(pct);
-                return (
-                  <div key={label} style={{ marginBottom: 8 }}>
-                    <div style={{ ...labelStyle, color: label === "You" ? "var(--gold)" : "var(--text-dim)" }}>{label}</div>
-                    <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                      <span style={{ fontFamily: "var(--font-display)", fontSize: 20, color, lineHeight: 1 }}>{pct}%</span>
-                      <span style={{ fontFamily: "var(--font-display)", fontSize: 15, color: "var(--gold)" }} title="Rough estimate from accuracy, not a rating">~{estimateElo(pct)}</span>
-                    </div>
-                    <div style={{ fontSize: 11, color, fontWeight: 600 }}>{gradeLabel}</div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
+      <div style={{ ...colStyle, width: 160 }}>
+        {gameInfoCard}
+        {evalCard}
+        {gameOverCard}
       </div>
 
       {/* ── Center: Board ─────────────────────────── */}
-      <div style={{ flexShrink: 0, position: "relative", order: narrow ? 1 : 0, alignSelf: narrow ? "center" : undefined }}>
-        <Chessboard
-          options={{
-            position: state.fen,
-            onPieceDrop: onDrop,
-            onSquareClick: onSquareClick,
-            boardOrientation: state.playerColor,
-            boardStyle: { width: boardSize, height: boardSize, borderRadius: "var(--radius)" },
-            darkSquareStyle: { backgroundColor: boardTheme.dark },
-            lightSquareStyle: { backgroundColor: boardTheme.light },
-            squareStyles: {
-              ...(selectedSquare ? { [selectedSquare]: { backgroundColor: "rgba(201, 168, 76, 0.4)" } } : {}),
-              ...(hintMove         ? qualitySquares(hintMove.from_sq,          hintMove.to_sq,          "best") : {}),
-              ...(replyMove        ? qualitySquares(replyMove.from_sq,         replyMove.to_sq,         "best") : {}),
-              ...(lastMoveHighlight   ? qualitySquares(lastMoveHighlight.from,   lastMoveHighlight.to,   lastMoveHighlight.quality)   : {}),
-              ...(engineMoveHighlight ? qualitySquares(engineMoveHighlight.from, engineMoveHighlight.to, engineMoveHighlight.quality) : {}),
-              ...(showBestLastHighlight ? qualitySquares(showBestLastHighlight.from, showBestLastHighlight.to, "best") : {}),
-            },
-          }}
-        />
-
-        {pendingPromotion && (
-          <div style={{
-            position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
-            background: "rgba(0,0,0,0.7)", display: "flex",
-            alignItems: "center", justifyContent: "center", zIndex: 100,
-            borderRadius: "var(--radius)",
-          }}>
-            <div style={{
-              background: "var(--surface)", border: "1px solid var(--border-hi)",
-              borderRadius: "var(--radius-lg)", padding: "20px 24px",
-              display: "flex", flexDirection: "column", gap: 12, alignItems: "center",
-            }}>
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-dim)", letterSpacing: "0.1em" }}>PROMOTE TO</div>
-              <div style={{ display: "flex", gap: 8 }}>
-                {([["q","♛ Queen"],["r","♜ Rook"],["b","♝ Bishop"],["n","♞ Knight"]] as const).map(([piece, label], i) => (
-                  <button key={piece} className="primary" autoFocus={i === 0} onClick={() => {
-                    makeMove(pendingPromotion.from + pendingPromotion.to + piece);
-                    setPendingPromotion(null);
-                  }} style={{ padding: "8px 16px", fontSize: 13 }}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <button className="ghost" style={{ fontSize: 11 }} onClick={() => setPendingPromotion(null)}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+      {board}
 
       {/* ── Right: Analysis + Controls ────────────── */}
-      <div style={{ ...colStyle, width: narrow ? "auto" : 175, height: narrow ? "auto" : boardSize,
-        justifyContent: "space-between", order: narrow ? 3 : 0, gap: narrow ? 14 : colStyle.gap }}>
+      <div style={{ ...colStyle, width: 175, height: boardSize, justifyContent: "space-between" }}>
         {/* Top: analysis buttons — always present, disabled when N/A */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ fontSize: 10, fontFamily: "var(--font-mono)", letterSpacing: "0.1em", color: "var(--text-dim)", textTransform: "uppercase" }}>
-              Analysis
-            </div>
-            <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }} title="Auto-evaluate every move for both players">
-              <input type="checkbox" checked={autoEval} onChange={e => setAutoEval(e.target.checked)} style={{ cursor: "pointer" }} />
-              <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-dim)" }}>auto</span>
-            </label>
-          </div>
-
-          <div>
-            <button style={{ width: "100%" }} onClick={requestHint} disabled={hintLoading || loading || state.gameOver} title="Full-strength Stockfish best next move (marks game as assisted)">
-              {hintLoading ? "Thinking…" : "Show Best Next"}
-            </button>
-            {hintError && <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--loss)", marginTop: 4 }}>unavailable</div>}
-          </div>
-
-          <div>
-            <button style={{ width: "100%" }} onClick={requestShowBestLast} disabled={showBestLastLoading || !prevFen} title="Show the best move from your last position (not assisted)">
-              {showBestLastLoading ? "Thinking…" : "Show Best Last"}
-            </button>
-            {showBestLastError && <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--loss)", marginTop: 4 }}>unavailable</div>}
-          </div>
-
-          <div>
-            <button style={{ width: "100%" }} onClick={requestPrevBest} disabled={prevBestLoading || !prevFen} title="Classify your last move by eval loss">
-              {prevBestLoading ? "Thinking…" : "Eval Last Move"}
-            </button>
-            {prevBestError && <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--loss)", marginTop: 4 }}>unavailable</div>}
-          </div>
-
-          <div>
-            <button style={{ width: "100%" }} onClick={requestReply} disabled={replyLoading || !replyFen} title="Best opponent move in response to your last move">
-              {replyLoading ? "Thinking…" : "Show Best Last Reply"}
-            </button>
-            {replyError && <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--loss)", marginTop: 4 }}>unavailable</div>}
-          </div>
-
-
-          {loading && <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-dim)" }}>engine thinking…</div>}
-          {moveError && <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--loss)" }}>{moveError}</div>}
-        </div>
+        {analysisSection}
 
         {/* Legend */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 3, borderTop: "1px solid var(--border)", paddingTop: 8 }}>
-          {QUALITIES.map((q) => (
-            <div key={q} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <div style={{ width: 10, height: 10, borderRadius: 2, flexShrink: 0, background: qualityTint(q, 75), boxShadow: `0 0 0 1.5px ${qualityTint(q, 90)}` }} />
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-dim)", letterSpacing: "0.04em", textTransform: "capitalize" }}>{q}</span>
-            </div>
-          ))}
-        </div>
+        {legend}
 
         {/* Bottom: game controls — pinned, never jump */}
         <div style={{ display: "flex", flexDirection: "column", gap: 6, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
-          {state.gameOver ? (
-            <>
-              <button className="primary" onClick={() => onGameEnd(state!.gameId)}>Review Game</button>
-              <button onClick={() => setState(null)}>New Game</button>
-            </>
-          ) : (
-            <>
-              <button onClick={takeback} disabled={loading || takebackLoading || !prevFen} title="Undo your last move and the engine's reply (counts as assisted)">
-                {takebackLoading ? "Taking back…" : "Take Back"}
-              </button>
-              <button onClick={resign} disabled={loading}>Resign</button>
-              <button className="danger-ghost" onClick={abort} disabled={loading}>Abort</button>
-            </>
-          )}
+          {controls}
         </div>
       </div>
 

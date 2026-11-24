@@ -8,6 +8,8 @@ import { Chess, type Square } from "chess.js";
 import { useBoardTheme } from "../../themes";
 import { useBoardSize } from "./boardUtils";
 import { applyUci, checkMove, userMoveIndices, type Line } from "./solveLine";
+import { tapAction, selectionStyles, layerStyles, selectedLabel } from "../../boardTap";
+import { DRAG_ACTIVATION_PX } from "../../viewport";
 
 export interface SolveResult { solved: boolean; revealed: boolean; seconds: number }
 
@@ -155,6 +157,8 @@ export default function SolveBoard({ line, judge, onResult, onNext, nextLabel = 
 
   function onDrop({ sourceSquare, targetSquare }: { sourceSquare: string; targetSquare: string | null }): boolean {
     if (!targetSquare || status !== "your-move") return false;
+    // A finger that wobbled onto the same square was a tap, not a drag
+    if (sourceSquare === targetSquare) { onSquareClick({ square: sourceSquare }); return false; }
     setSelected(null);
     if (isPromotion(sourceSquare, targetSquare)) { setPendingPromo({ from: sourceSquare, to: targetSquare }); return true; }
     const legal = checkMove(fen, sourceSquare + targetSquare, line.moves[ply]) !== "illegal";
@@ -162,27 +166,29 @@ export default function SolveBoard({ line, judge, onResult, onNext, nextLabel = 
     return false;   // the board position is driven by `fen` state
   }
 
-  function onSquareClick({ square, piece }: { square: string; piece?: { pieceType: string } | null }) {
+  function onSquareClick({ square }: { square: string }) {
     if (status !== "your-move") return;
-    if (selected) {
-      const from = selected;
+    const action = tapAction(fen, selected, square, line.userColor);
+    if (action.kind === "select") setSelected(action.square);
+    else if (action.kind === "deselect") setSelected(null);
+    else if (action.kind === "move") {
       setSelected(null);
-      if (from === square) return;
-      if (isPromotion(from, square)) { setPendingPromo({ from, to: square }); return; }
-      if (checkMove(fen, from + square, line.moves[ply]) !== "illegal") { void tryMove(from + square); return; }
+      if (isPromotion(action.from, action.to)) setPendingPromo({ from: action.from, to: action.to });
+      else void tryMove(action.from + action.to);
     }
-    if (piece && piece.pieceType.startsWith(line.userColor)) setSelected(square);
   }
 
   const finished = status === "done" || status === "revealed";
   const more = finished && ply < line.moves.length && fen === fens[ply];   // not after a different mate
   const shownFen = contPly !== null ? fens[contPly] : fen;
-  const squareStyles: Record<string, { backgroundColor: string }> = {};
+  const baseStyles: Record<string, { backgroundColor: string }> = {};
   if (lastMove && contPly === null) {
-    squareStyles[lastMove.from] = { backgroundColor: lastMove.color };
-    squareStyles[lastMove.to] = { backgroundColor: lastMove.color };
+    baseStyles[lastMove.from] = { backgroundColor: lastMove.color };
+    baseStyles[lastMove.to] = { backgroundColor: lastMove.color };
   }
-  if (selected) squareStyles[selected] = { backgroundColor: GOLD };
+  const showSelection = selected && status === "your-move" && contPly === null;
+  const squareStyles = layerStyles(baseStyles, showSelection ? selectionStyles(fen, selected) : {});
+  const selectedText = showSelection ? selectedLabel(fen, selected) : null;
 
   const toneColor = { good: "var(--good)", bad: "var(--loss)", info: "var(--text-dim)" };
 
@@ -199,6 +205,7 @@ export default function SolveBoard({ line, judge, onResult, onNext, nextLabel = 
           lightSquareStyle: { backgroundColor: theme.light },
           squareStyles,
           allowDragging: status === "your-move",
+          dragActivationDistance: DRAG_ACTIVATION_PX,
         }} />
         {pendingPromo && (
           <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex",
@@ -228,6 +235,11 @@ export default function SolveBoard({ line, judge, onResult, onNext, nextLabel = 
         {status === "your-move" && !message && (
           <div className="mono dim" style={{ fontSize: 12 }}>
             Find the best move{asked.length > 1 ? ` (${asked.indexOf(ply) + 1} of ${asked.length})` : ""}.
+          </div>
+        )}
+        {selectedText && (
+          <div aria-live="polite" style={{ fontSize: 15, fontWeight: 500, color: "var(--gold)" }}>
+            {selectedText} — tap a dot to move it
           </div>
         )}
         {message && <div style={{ fontSize: 13, color: toneColor[message.tone], lineHeight: 1.5 }}>{message.text}</div>}

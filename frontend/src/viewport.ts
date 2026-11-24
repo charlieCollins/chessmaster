@@ -40,3 +40,13 @@ export function useBoardSizeFor(max: number, desktopReserve: number, min = 240):
   }, [max, desktopReserve, min]);
   return size;
 }
+
+/** True on touch-first devices (phones, tablets). */
+export const COARSE_POINTER =
+  typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
+
+/**
+ * Pixels a finger must travel before the board treats it as a drag. The library default
+ * (1px) turns almost every tap into a tiny drag, so taps to select/move get lost on phones.
+ */
+export const DRAG_ACTIVATION_PX = COARSE_POINTER ? 12 : 3;

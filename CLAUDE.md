@@ -74,6 +74,7 @@ Use python-chess (`chess.pgn.read_game`) to replay positions when explaining.
 - `frontend/src/themes.ts` — Theme definitions: Classic, Forest, Ocean, Night, Autumn, Obsidian; maps theme names to CSS variable overrides
 - `frontend/src/config.ts` — Frontend config: `API` base (default `""` = same origin; override via `VITE_API_BASE`) and UI timing constants
 - `frontend/src/opponents.ts` — `opponentLabel` ("Maia 1300" / "Stockfish ~1000"), picker value encoding
+- `frontend/src/boardTap.ts` — tap-to-move rules (`tapAction`: select / switch piece / move / deselect) and selection highlights (gold ring + dots on legal targets) shared by Play and SolveBoard; `viewport.ts` has `useNarrow` (≤768px phone layout) and `DRAG_ACTIVATION_PX` (12px on touch so taps aren't lost as tiny drags)
 - `frontend/src/classify.ts` — Win%-based move classification for live Play highlights (mirrors `game_utils.py`)
 - `frontend/src/pages/Home.tsx` — Dashboard: win/loss stats + completed game history table
 - `frontend/src/pages/Play.tsx` — Interactive board, play vs engine, color/ELO selection, eval bar, hint, best-reply

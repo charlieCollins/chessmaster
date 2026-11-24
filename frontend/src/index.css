@@ -327,7 +327,15 @@ button.danger-ghost:hover:not(:disabled) {
 
 /* ── Responsive ─────────────────────────────────────────── */
 @media (max-width: 768px) {
+  /* Phones: readable dim text, finger-sized buttons, no iOS zoom on form focus */
+  :root { --text-dim: #8b91a5; }
+  body { font-size: 15px; }
+  button { font-size: 15px; padding: 9px 14px; min-height: 44px; }
+  button.tall { min-height: 50px; white-space: normal; line-height: 1.2; }
+  select, input, textarea { font-size: 16px; }
+
   .app-header {
+    position: static;   /* a sticky header hid the top of the board while scrolling */
     padding: 0 12px;
     gap: 12px;
     height: auto;
@@ -343,8 +351,9 @@ button.danger-ghost:hover:not(:disabled) {
   }
 
   .nav-btn {
-    padding: 4px 10px;
-    font-size: 12px;
+    padding: 6px 12px;
+    font-size: 14px;
+    min-height: 40px;
   }
 
   .app-main {
@@ -375,7 +384,7 @@ button.danger-ghost:hover:not(:disabled) {
   }
 
   .nav-btn {
-    padding: 4px 8px;
-    font-size: 11px;
+    padding: 6px 10px;
+    font-size: 13px;
   }
 }
