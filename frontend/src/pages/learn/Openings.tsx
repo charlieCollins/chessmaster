@@ -5,6 +5,7 @@ import { OPENINGS, E4_OPENINGS, D4_OPENINGS, FLANK_OPENINGS } from "../../data/o
 import type { OpeningKey } from "../../data/openings";
 import { useBoardTheme } from "../../themes";
 import { useBoardSize, fenAtPly, pairMoves } from "./boardUtils";
+import { useNarrow } from "../../viewport";
 
 // ── Opening components ────────────────────────────────────────────────────────
 
@@ -91,6 +92,7 @@ export function OpeningDetail({
   const boardTheme = useBoardTheme();
   // FIX 5 — responsive board size
   const boardSize = useBoardSize(420);
+  const narrow = useNarrow();
   // FIX 6 — ref for active row auto-scroll
   const activeRowRef = useRef<HTMLTableRowElement | null>(null);
 
@@ -196,7 +198,7 @@ export function OpeningDetail({
 
           {/* Move table */}
           <div style={{
-            marginTop: 10, maxHeight: 220, overflowY: "auto",
+            marginTop: 10, maxHeight: narrow ? undefined : 220, overflowY: narrow ? undefined : "auto",
             border: "1px solid var(--border)", borderRadius: "var(--radius)",
             background: "var(--surface)",
           }}>

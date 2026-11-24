@@ -432,7 +432,7 @@ export default function Review({ gameId }: ReviewProps) {
           )}
 
           {/* Move table */}
-          <div style={{ maxHeight: 340, overflowY: "auto", border: "1px solid var(--border)", borderRadius: "var(--radius)", background: "var(--surface)" }}>
+          <div style={{ maxHeight: narrow ? undefined : 340, overflowY: narrow ? undefined : "auto", border: "1px solid var(--border)", borderRadius: "var(--radius)", background: "var(--surface)" }}>
             <table className="move-table">
               <colgroup>
                 <col style={{ width: 32 }} />

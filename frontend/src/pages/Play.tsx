@@ -222,6 +222,11 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
     })();
     return () => { cancelled = true; };
   }, [finishedGameId, finishedColor]);
+  // Phones: when the game ends, bring the result (now at the top) into view
+  const resultTopRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (finishedGameId !== null && narrow) resultTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [finishedGameId, narrow]);
   useEffect(() => {
     onGameActive?.(gameActive);
   }, [gameActive, onGameActive]);
@@ -987,6 +992,18 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
       : selectedText
       ? { text: `${selectedText} — tap a dot to move it`, color: "var(--gold)" }
       : { text: "Your move — tap a piece, or drag it", color: "var(--text-dim)" };
+    // Game over: the result and what to do next go ABOVE the board, where you're already looking
+    if (state.gameOver) return (
+      <div ref={resultTopRef} style={{ display: "flex", flexDirection: "column", gap: 12, scrollMarginTop: 12 }}>
+        {gameOverCard}
+        <div style={{ display: "flex", gap: 8 }}>{controls}</div>
+        {board}
+        {gameInfoStrip}
+        {evalCard}
+        {analysisSection}
+        {legend}
+      </div>
+    );
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {gameInfoStrip}
@@ -996,7 +1013,6 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
             {status.text}
           </div>
         )}
-        {gameOverCard}
         <div style={{ display: "flex", gap: 8 }}>{controls}</div>
         {evalCard}
         {analysisSection}
