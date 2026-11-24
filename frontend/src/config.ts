@@ -16,7 +16,7 @@ export const REPLY_DISPLAY_MS = 1000;
 export const EVAL_DISPLAY_MS = 1000;
 
 /** Minimum delay before revealing the engine's reply move (avoids instant flash) */
-export const ENGINE_MOVE_MIN_MS = 1000;
+export const ENGINE_MOVE_MIN_MS = 600;
 
 /** Estimated duration of post-game analysis (used for progress bar) */
 export const ANALYZE_ESTIMATE_MS = 30_000;

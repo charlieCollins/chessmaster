@@ -81,6 +81,25 @@ const ELO_OPTIONS: Array<{ value: number; label: string; mode: "skill" | "uci"; 
   { value: 2900, label:  "2900", mode: "uci" },
 ];
 
+/** "Opponent is thinking ●●●" with a seconds counter once it takes a while. */
+function ThinkingIndicator({ since }: { since: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(t);
+  }, []);
+  const secs = Math.floor((now - since) / 1000);
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+      <span className="thinking-spinner" aria-hidden />
+      Opponent is thinking
+      <span className="thinking-dots" aria-hidden><i /><i /><i /></span>
+      {secs >= 3 && <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>{secs}s</span>}
+      {secs >= 15 && <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· server is slow, still waiting</span>}
+    </span>
+  );
+}
+
 function engineModeTag(elo: number): string {
   const opt = ELO_OPTIONS.find(o => o.value === elo);
   if (opt?.mode === "skill") return `Skill ${opt.skill}/20`;
@@ -126,6 +145,8 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
   }, []);
   // FIX H2: selectedSquare typed as Square | null
   const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
+  // When the opponent started thinking (null = not waiting on a move)
+  const [thinkingSince, setThinkingSince] = useState<number | null>(null);
   const [hintMove, setHintMove] = useState<{ from_sq: string; to_sq: string } | null>(null);
   const [hintError, setHintError] = useState(false);
   const [replyFen, setReplyFen] = useState<string | null>(null);
@@ -446,6 +467,7 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
     const playerIsWhite = state.playerColor === "white";
     setLoading(true);
     const moveStart = Date.now();
+    setThinkingSince(moveStart);
     try {
       const res = await fetch(`${API}/api/game/${state.gameId}/move`, {
         method: "POST",
@@ -485,10 +507,11 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
           }).catch(() => null)
         : null;
 
-      // Show player move highlight before engine delay so it's visible during the pause
+      // Highlight the player's move when its auto-eval arrives — in the background,
+      // so a slow eval never holds up the opponent's reply
       if (autoPlayerPromise) {
-        const res = await autoPlayerPromise;
-        if (res?.ok) {
+        void autoPlayerPromise.then(async (res) => {
+          if (!res?.ok) return;
           const evalData = await res.json();
           const bestUci = evalData.from_sq + evalData.to_sq + (evalData.promotion ?? "");
           const quality = classifyMove(uci, bestUci, evalBeforeMove, evalAfterMove, playerIsWhite);
@@ -497,7 +520,7 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
             if (evalTimerRef.current) clearTimeout(evalTimerRef.current);
             evalTimerRef.current = setTimeout(() => setLastMoveHighlight(null), EVAL_DISPLAY_MS);
           }
-        }
+        }).catch(() => {});
       }
 
       // Engine delay — player highlight is already visible during this pause
@@ -521,10 +544,14 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
         } : s
       );
 
-      // Engine move highlight — shown after engine move appears on board
-      if (autoEnginePromise) {
-        const res = await autoEnginePromise;
-        if (res?.ok && data.engine_move) {
+      // Your turn again right away — the board isn't locked while auto-eval finishes
+      setLoading(false);
+      setThinkingSince(null);
+
+      // Engine move highlight — whenever its auto-eval arrives, in the background
+      if (autoEnginePromise && data.engine_move) {
+        void autoEnginePromise.then(async (res) => {
+          if (!res?.ok) return;
           const evalData = await res.json();
           const bestUci = evalData.from_sq + evalData.to_sq + (evalData.promotion ?? "");
           const quality = classifyMove(data.engine_move, bestUci, evalAfterMove, evalAfterReply, !playerIsWhite);
@@ -532,7 +559,7 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
           setEngineMoveHighlight({ from: data.engine_move.slice(0, 2), to: data.engine_move.slice(2, 4), quality });
           if (engineMoveTimerRef.current) clearTimeout(engineMoveTimerRef.current);
           engineMoveTimerRef.current = setTimeout(() => setEngineMoveHighlight(null), EVAL_DISPLAY_MS);
-        }
+        }).catch(() => {});
       }
     } catch {
       // FIX H1: network failure — rollback optimistic FEN
@@ -540,6 +567,7 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
       setMoveError("Could not reach server — please check your connection.");
     } finally {
       setLoading(false);
+      setThinkingSince(null);
     }
   }
 
@@ -946,8 +974,8 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
   const tapWord = COARSE_POINTER ? "tap" : "click";
   const status = moveError
     ? { text: moveError, color: "var(--loss)" }
-    : loading
-    ? { text: "Opponent is thinking…", color: "var(--text-dim)" }
+    : thinkingSince !== null
+    ? { text: "", color: "var(--text)", thinking: true }
     : state.gameOver
     ? null
     : selectedText
@@ -955,7 +983,7 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
     : { text: `Your move — ${tapWord} a piece, or drag it`, color: "var(--text-dim)" };
   const statusLine = status && (
     <div aria-live="polite" style={{ minHeight: 24, fontSize: 15, fontWeight: 500, color: status.color, textAlign: narrow ? "center" : "left" }}>
-      {status.text}
+      {"thinking" in status && thinkingSince !== null ? <ThinkingIndicator since={thinkingSince} /> : status.text}
     </div>
   );
 

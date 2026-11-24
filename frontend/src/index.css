@@ -391,3 +391,24 @@ button.danger-ghost:hover:not(:disabled) {
     font-size: 13px;
   }
 }
+
+/* ── Opponent-thinking indicator (Play) ─────────────────── */
+.thinking-spinner {
+  width: 16px; height: 16px; flex-shrink: 0;
+  border: 2px solid var(--border-hi);
+  border-top-color: var(--gold);
+  border-radius: 50%;
+  animation: thinking-spin 0.8s linear infinite;
+}
+@keyframes thinking-spin { to { transform: rotate(360deg); } }
+.thinking-dots { display: inline-flex; gap: 3px; }
+.thinking-dots i {
+  width: 5px; height: 5px; border-radius: 50%; background: currentColor;
+  animation: thinking-dot 1.2s ease-in-out infinite;
+}
+.thinking-dots i:nth-child(2) { animation-delay: 0.15s; }
+.thinking-dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes thinking-dot { 0%, 80%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .thinking-spinner, .thinking-dots i { animation: none; }
+}
