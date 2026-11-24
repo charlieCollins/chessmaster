@@ -4,10 +4,8 @@
 
 - [x] Deployed (2026-11-23): 526 was nginx having no `chess` site (fell through to another site's cert).
       App + data + Maia are on the VM (`deploy/deploy.sh --first`).
-- [ ] **Cloudflare Access does NOT cover chess.azimondia.com yet** — the site was publicly readable, so the
-      nginx site is disabled again (public URL shows 526). Add the hostname to an Access application
-      (email + one-time code), then run `deploy/deploy.sh`; it refuses to leave the site up if the API
-      answers without a login.
+- [x] Cloudflare Access: `chess.azimondia.com` added to the `azimondia-all` Access app (same policy and
+      4 emails as recipes, 7-day session) on 2026-11-24; anonymous requests get a 302 to the login.
 - [ ] Optionally restrict origin 443 to Cloudflare IP ranges in the GCP firewall so the VM can't be hit directly
       (bypassing Cloudflare Access).
 

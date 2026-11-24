@@ -1,7 +1,7 @@
 # Chess Trainer
 
 Self-hosted chess trainer web app. FastAPI backend + React (Vite TS) frontend.
-Runs on localhost, single user, no auth. (Public hosting is planned but not working yet — see `TODO.md`.)
+Single user, no app-level auth. Live at https://chess.azimondia.com behind Cloudflare Access (see Hosting); also runs locally.
 
 ## Quick Start
 
@@ -215,7 +215,8 @@ Test files use `os.environ["DATABASE_URL"] = "sqlite://"` at module level (befor
 - **SSL**: Cloudflare Origin Certificate — wildcard `*.azimondia.com` at `/etc/ssl/cloudflare/cert.pem` + `key.pem`
   - Same cert shared by all azimondia.com subdomains (recipes, chess, flight, etc.)
   - Each subdomain gets its own nginx `sites-available/` config file
-- **Access**: Cloudflare Access (email + one-time code) in front of the whole site — the app itself has no auth
+- **Access**: Cloudflare Access app `azimondia-all` (covers recipes + chess; email + one-time code, 4 allowed emails,
+  7-day session) — the app itself has no auth, and `deploy/deploy.sh` takes the site down if the API answers without a login
 - **Origin VM**: `instance-20260207-141914` (zone `us-west1-b`, project `azimondia`), Ubuntu 25.10, 1 GB RAM, shared
   with other sites (recipes, readydogrescue, amazonasguide). Reach it with `gcloud compute ssh instance-20260207-141914 --zone us-west1-b`.
 - **Deploy**: `deploy/deploy.sh` from this machine (main must be pushed — the VM pulls from GitHub; the frontend is
