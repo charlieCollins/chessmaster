@@ -50,3 +50,32 @@ export const COARSE_POINTER =
  * (1px) turns almost every tap into a tiny drag, so taps to select/move get lost on phones.
  */
 export const DRAG_ACTIVATION_PX = COARSE_POINTER ? 12 : 3;
+
+/** .app-main max width and horizontal padding on desktop (index.css). */
+const MAIN_MAX = 1120;
+const MAIN_PAD_X = 56;
+/** Header + top/bottom page padding above and below the board on desktop. */
+const DESKTOP_CHROME_Y = 52 + 36 + 28;
+
+/**
+ * Board size for a page with the board beside a `panel`-px side panel: on desktop as large
+ * as fits both the page width and the window height (so the whole board is visible without
+ * scrolling); on phones, full width.
+ */
+export function boardBesidePanel(panel: number, gap: number, max = 820, min = 320): number {
+  const w = window.innerWidth;
+  if (w <= NARROW_PX) return Math.min(max, w - NARROW_GUTTER);
+  const byWidth = Math.min(w, MAIN_MAX) - MAIN_PAD_X - panel - gap;
+  const byHeight = window.innerHeight - DESKTOP_CHROME_Y;
+  return Math.round(Math.max(min, Math.min(max, byWidth, byHeight)));
+}
+
+export function useBoardBesidePanel(panel: number, gap: number, max = 820, min = 320): number {
+  const [size, setSize] = useState(() => boardBesidePanel(panel, gap, max, min));
+  useEffect(() => {
+    const on = () => setSize(boardBesidePanel(panel, gap, max, min));
+    window.addEventListener("resize", on);
+    return () => window.removeEventListener("resize", on);
+  }, [panel, gap, max, min]);
+  return size;
+}

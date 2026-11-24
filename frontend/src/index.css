@@ -7,7 +7,7 @@
   --border-hi:   #383c4e;
 
   --text:        #cdd1de;
-  --text-dim:    #5a5f72;
+  --text-dim:    #868ca2;
   --text-bright: #eceef5;
 
   --gold:        #c9a84c;
@@ -44,8 +44,8 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-ui);
-  font-size: 14px;
-  line-height: 1.6;
+  font-size: 15px;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -83,7 +83,7 @@ h1, h2, h3 { line-height: 1.2; }
   border: none;
   color: var(--text-dim);
   font-family: var(--font-ui);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   padding: 6px 14px;
   border-radius: var(--radius);
@@ -98,16 +98,16 @@ h1, h2, h3 { line-height: 1.2; }
 
 .app-main {
   flex: 1;
-  max-width: 960px;
+  max-width: 1120px;
   width: 100%;
   margin: 0 auto;
-  padding: 32px 24px;
+  padding: 36px 28px 28px;
 }
 
 /* ── Buttons ────────────────────────────────────────────── */
 button {
   font-family: var(--font-ui);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   border-radius: var(--radius);
   border: 1px solid var(--border-hi);
@@ -148,7 +148,6 @@ button.danger-ghost {
   background: none;
   border-color: transparent;
   color: var(--text-dim);
-  border-bottom: 1px solid rgba(224, 90, 90, 0.3);  /* subtle red underline hint */
 }
 button.danger-ghost:hover:not(:disabled) {
   color: var(--loss);
@@ -158,9 +157,10 @@ button.danger-ghost:hover:not(:disabled) {
 
 /* ── Section headers ────────────────────────────────────── */
 .section-label {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.12em;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text-dim);
   margin-bottom: 16px;
@@ -193,38 +193,42 @@ button.danger-ghost:hover:not(:disabled) {
 }
 .stat-value {
   font-family: var(--font-display);
-  font-size: 28px;
+  font-size: 32px;
   line-height: 1;
   color: var(--text-bright);
   margin-bottom: 4px;
 }
 .stat-label {
-  font-size: 11px;
+  font-size: 12px;
+  font-weight: 500;
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
 }
 
 /* ── Table ──────────────────────────────────────────────── */
 .data-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
 }
 .data-table th {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
   color: var(--text-dim);
   text-align: left;
-  padding: 8px 12px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--border);
-  font-weight: 400;
+  white-space: nowrap;
 }
 .data-table td {
-  padding: 10px 12px;
+  padding: 12px 14px;
+  white-space: nowrap;
+  vertical-align: middle;
   border-bottom: 1px solid var(--border);
   color: var(--text);
 }
@@ -241,7 +245,7 @@ button.danger-ghost:hover:not(:disabled) {
   font-size: 13px;
 }
 .move-table th {
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text-dim);
@@ -276,8 +280,7 @@ button.danger-ghost:hover:not(:disabled) {
   text-align: center;
   padding: 48px 24px;
   color: var(--text-dim);
-  font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 15px;
   border: 1px dashed var(--border);
   border-radius: var(--radius-lg);
 }
@@ -387,4 +390,25 @@ button.danger-ghost:hover:not(:disabled) {
     padding: 6px 10px;
     font-size: 13px;
   }
+}
+
+/* ── Opponent-thinking indicator (Play) ─────────────────── */
+.thinking-spinner {
+  width: 16px; height: 16px; flex-shrink: 0;
+  border: 2px solid var(--border-hi);
+  border-top-color: var(--gold);
+  border-radius: 50%;
+  animation: thinking-spin 0.8s linear infinite;
+}
+@keyframes thinking-spin { to { transform: rotate(360deg); } }
+.thinking-dots { display: inline-flex; gap: 3px; }
+.thinking-dots i {
+  width: 5px; height: 5px; border-radius: 50%; background: currentColor;
+  animation: thinking-dot 1.2s ease-in-out infinite;
+}
+.thinking-dots i:nth-child(2) { animation-delay: 0.15s; }
+.thinking-dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes thinking-dot { 0%, 80%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .thinking-spinner, .thinking-dots i { animation: none; }
 }

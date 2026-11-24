@@ -9,7 +9,7 @@ import { type EngineKind, opponentLabel, encodeOpponent, decodeOpponent } from "
 import { formatEval, describeEval, describeMoveDelta } from "../evalText";
 import { type AccuracySummary, describeResult, grade, estimateElo } from "../ratings";
 import GameIdBadge from "../components/GameIdBadge";
-import { useBoardSizeFor, useNarrow, DRAG_ACTIVATION_PX } from "../viewport";
+import { useBoardBesidePanel, useNarrow, DRAG_ACTIVATION_PX, COARSE_POINTER } from "../viewport";
 import { tapAction, selectionStyles, layerStyles, selectedLabel } from "../boardTap";
 
 /** Returns every square on the path from→to (inclusive). For knights/pawns/kings
@@ -81,20 +81,38 @@ const ELO_OPTIONS: Array<{ value: number; label: string; mode: "skill" | "uci"; 
   { value: 2900, label:  "2900", mode: "uci" },
 ];
 
+/** "Opponent is thinking ●●●" with a seconds counter once it takes a while. */
+function ThinkingIndicator({ since }: { since: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(t);
+  }, []);
+  const secs = Math.floor((now - since) / 1000);
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+      <span className="thinking-spinner" aria-hidden />
+      Opponent is thinking
+      <span className="thinking-dots" aria-hidden><i /><i /><i /></span>
+      {secs >= 3 && <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>{secs}s</span>}
+      {secs >= 15 && <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>· server is slow, still waiting</span>}
+    </span>
+  );
+}
+
 function engineModeTag(elo: number): string {
   const opt = ELO_OPTIONS.find(o => o.value === elo);
   if (opt?.mode === "skill") return `Skill ${opt.skill}/20`;
   return "UCI ELO";
 }
 
-// Board size: full width on phones; on wider screens it reserves room for the left (160px)
-// and right (175px) panels + gaps.
-const MIN_BOARD = 280;
-const SIDE_PANELS = 160 + 175 + 40;
+/** Desktop: one side panel next to the board. */
+const PANEL_W = 300;
+const PANEL_GAP = 28;
 
 export default function Play({ onGameEnd, onGameActive }: PlayProps) {
   const boardTheme = useBoardTheme();
-  const boardSize = useBoardSizeFor(540, SIDE_PANELS, MIN_BOARD);
+  const boardSize = useBoardBesidePanel(PANEL_W, PANEL_GAP);
   const narrow = useNarrow();
   const [state, setState]             = useState<GameState | null>(null);
   const [loading, setLoading]         = useState(false);
@@ -127,6 +145,8 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
   }, []);
   // FIX H2: selectedSquare typed as Square | null
   const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
+  // When the opponent started thinking (null = not waiting on a move)
+  const [thinkingSince, setThinkingSince] = useState<number | null>(null);
   const [hintMove, setHintMove] = useState<{ from_sq: string; to_sq: string } | null>(null);
   const [hintError, setHintError] = useState(false);
   const [replyFen, setReplyFen] = useState<string | null>(null);
@@ -447,6 +467,7 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
     const playerIsWhite = state.playerColor === "white";
     setLoading(true);
     const moveStart = Date.now();
+    setThinkingSince(moveStart);
     try {
       const res = await fetch(`${API}/api/game/${state.gameId}/move`, {
         method: "POST",
@@ -486,10 +507,11 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
           }).catch(() => null)
         : null;
 
-      // Show player move highlight before engine delay so it's visible during the pause
+      // Highlight the player's move when its auto-eval arrives — in the background,
+      // so a slow eval never holds up the opponent's reply
       if (autoPlayerPromise) {
-        const res = await autoPlayerPromise;
-        if (res?.ok) {
+        void autoPlayerPromise.then(async (res) => {
+          if (!res?.ok) return;
           const evalData = await res.json();
           const bestUci = evalData.from_sq + evalData.to_sq + (evalData.promotion ?? "");
           const quality = classifyMove(uci, bestUci, evalBeforeMove, evalAfterMove, playerIsWhite);
@@ -498,7 +520,7 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
             if (evalTimerRef.current) clearTimeout(evalTimerRef.current);
             evalTimerRef.current = setTimeout(() => setLastMoveHighlight(null), EVAL_DISPLAY_MS);
           }
-        }
+        }).catch(() => {});
       }
 
       // Engine delay — player highlight is already visible during this pause
@@ -522,10 +544,14 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
         } : s
       );
 
-      // Engine move highlight — shown after engine move appears on board
-      if (autoEnginePromise) {
-        const res = await autoEnginePromise;
-        if (res?.ok && data.engine_move) {
+      // Your turn again right away — the board isn't locked while auto-eval finishes
+      setLoading(false);
+      setThinkingSince(null);
+
+      // Engine move highlight — whenever its auto-eval arrives, in the background
+      if (autoEnginePromise && data.engine_move) {
+        void autoEnginePromise.then(async (res) => {
+          if (!res?.ok) return;
           const evalData = await res.json();
           const bestUci = evalData.from_sq + evalData.to_sq + (evalData.promotion ?? "");
           const quality = classifyMove(data.engine_move, bestUci, evalAfterMove, evalAfterReply, !playerIsWhite);
@@ -533,7 +559,7 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
           setEngineMoveHighlight({ from: data.engine_move.slice(0, 2), to: data.engine_move.slice(2, 4), quality });
           if (engineMoveTimerRef.current) clearTimeout(engineMoveTimerRef.current);
           engineMoveTimerRef.current = setTimeout(() => setEngineMoveHighlight(null), EVAL_DISPLAY_MS);
-        }
+        }).catch(() => {});
       }
     } catch {
       // FIX H1: network failure — rollback optimistic FEN
@@ -541,6 +567,7 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
       setMoveError("Could not reach server — please check your connection.");
     } finally {
       setLoading(false);
+      setThinkingSince(null);
     }
   }
 
@@ -597,19 +624,10 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
   }
 
 
-  const colStyle: React.CSSProperties = {
-    display: "flex",
-    flexDirection: "column",
-    gap: 10,
-    paddingTop: 4,
-    flexShrink: 0,
-    overflowY: "auto",
-    maxHeight: `${boardSize}px`,
-  };
-
   const labelStyle: React.CSSProperties = {
-    fontSize: narrow ? 12 : 11,
-    fontFamily: "var(--font-mono)",
+    fontSize: 12,
+    fontWeight: 600,
+    fontFamily: "var(--font-ui)",
     letterSpacing: "0.08em",
     textTransform: "uppercase",
     color: "var(--text-dim)",
@@ -723,8 +741,8 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
     : null;
 
   // Phones get larger type everywhere (desktop sizes unchanged)
-  const small = narrow ? 13 : 11;
-  const body = narrow ? 15 : 12;
+  const small = 13;
+  const body = narrow ? 15 : 14;
   const label = labelStyle;
   const card: React.CSSProperties = {
     padding: "12px 14px", background: "var(--surface)", borderRadius: "var(--radius)", border: "1px solid var(--border)",
@@ -742,35 +760,13 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
   };
   const selectedText = selectedSquare ? selectedLabel(state.fen, selectedSquare) : null;
 
-  const gameInfoCard = (
-    <div style={card}>
-      <div style={label}>Game</div>
-      <div style={{ marginBottom: 10 }}><GameIdBadge id={state.publicId} /></div>
-      <div style={label}>Playing as</div>
-      <div style={{ fontFamily: "var(--font-mono)", color: "var(--text-bright)", textTransform: "capitalize" }}>
-        {state.playerColor}
-      </div>
-      <div style={{ ...label, marginTop: 10 }}>Opponent</div>
-      <div style={{ fontFamily: "var(--font-mono)", color: "var(--text-bright)" }}>
-        {opponentLabel(state.engine, state.engineElo)}
-      </div>
-      <div style={{ fontFamily: "var(--font-mono)", fontSize: small, color: "var(--text-dim)", marginTop: 1 }}>
-        {state.engine === "maia" ? "human-like" : engineModeTag(state.engineElo)}
-      </div>
-      {state.assisted && (
-        <div style={{ fontFamily: "var(--font-mono)", fontSize: small, color: "var(--text-dim)", marginTop: 6 }}>
-          assisted
-        </div>
-      )}
-    </div>
-  );
-
-  // Phones: one line above the board instead of the info card
+  // One line: opponent, your colour, game id
   const gameInfoStrip = (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
       <div style={{ fontSize: 15, color: "var(--text-bright)" }}>
         vs <b style={{ fontWeight: 600 }}>{opponentLabel(state.engine, state.engineElo)}</b>
         <span style={{ color: "var(--text-dim)", fontSize: 13 }}>
+          {state.engine === "stockfish" ? ` (${engineModeTag(state.engineElo)})` : ""}
           {" "}· you play {state.playerColor}{state.assisted ? " · assisted" : ""}
         </span>
       </div>
@@ -796,7 +792,7 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
           </div>
         );
       })()}
-      <div style={{ fontSize: small, color: "var(--text-dim)", fontFamily: "var(--font-mono)", marginTop: 4 }}>
+      <div style={{ fontSize: small, color: "var(--text-dim)", marginTop: 4 }}>
         {describeEval(evalPos)}
       </div>
       {lastMoveText !== null && (() => {
@@ -806,7 +802,7 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
             <div style={{ ...label, marginTop: 10 }}>Last move</div>
             <span
               title="How much the evaluation changed because of your move alone"
-              style={{ color: tone, fontSize: small, fontFamily: "var(--font-mono)", cursor: "help" }}
+              style={{ color: tone, fontSize: small, cursor: "help" }}
             >
               {lastMoveText}
             </span>
@@ -876,21 +872,19 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
   const analysisSection = (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ ...label, fontSize: narrow ? 12 : 10, letterSpacing: "0.1em", marginBottom: 0 }}>Analysis</div>
+        <div style={{ ...label, marginBottom: 0 }}>Analysis</div>
         <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", padding: narrow ? "6px 0" : 0 }}
           title="Auto-evaluate every move for both players">
           <input type="checkbox" checked={autoEval} onChange={e => setAutoEval(e.target.checked)}
             style={{ cursor: "pointer", width: narrow ? 20 : undefined, height: narrow ? 20 : undefined }} />
-          <span style={{ fontSize: narrow ? 14 : 10, fontFamily: "var(--font-mono)", color: "var(--text-dim)" }}>
-            {narrow ? "auto-eval" : "auto"}
-          </span>
+          <span style={{ fontSize: narrow ? 14 : 13, color: "var(--text-dim)" }}>auto-eval</span>
         </label>
       </div>
 
-      <div style={narrow ? { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 } : { display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
         {analysisButtons.map(([text, onClick, busy, disabled, error, title]) => (
           <div key={text}>
-            <button className={narrow ? "tall" : undefined} style={{ width: "100%" }} onClick={onClick} disabled={disabled} title={title}>
+            <button className="tall" style={{ width: "100%", height: "100%" }} onClick={onClick} disabled={disabled} title={title}>
               {busy ? "Thinking…" : text}
             </button>
             {error && errorText("unavailable")}
@@ -898,19 +892,15 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
         ))}
       </div>
 
-      {!narrow && loading && <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-dim)" }}>engine thinking…</div>}
-      {!narrow && moveError && <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--loss)" }}>{moveError}</div>}
     </div>
   );
 
   const legend = (
-    <div style={narrow
-      ? { display: "flex", flexWrap: "wrap", gap: "6px 14px" }
-      : { display: "flex", flexDirection: "column", gap: 3, borderTop: "1px solid var(--border)", paddingTop: 8 }}>
+    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px" }}>
       {QUALITIES.map((q) => (
         <div key={q} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <div style={{ width: narrow ? 12 : 10, height: narrow ? 12 : 10, borderRadius: 2, flexShrink: 0, background: qualityTint(q, 75), boxShadow: `0 0 0 1.5px ${qualityTint(q, 90)}` }} />
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: narrow ? 13 : 10, color: "var(--text-dim)", letterSpacing: "0.04em", textTransform: "capitalize" }}>{q}</span>
+          <div style={{ width: 12, height: 12, borderRadius: 2, flexShrink: 0, background: qualityTint(q, 75), boxShadow: `0 0 0 1.5px ${qualityTint(q, 90)}` }} />
+          <span style={{ fontSize: 13, color: "var(--text-dim)", textTransform: "capitalize" }}>{q}</span>
         </div>
       ))}
     </div>
@@ -918,17 +908,17 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
 
   const controls = state.gameOver ? (
     <>
-      <button className={`primary${narrow ? " tall" : ""}`} style={narrow ? { flex: 1 } : undefined} onClick={() => onGameEnd(state!.gameId)}>Review Game</button>
-      <button className={narrow ? "tall" : undefined} style={narrow ? { flex: 1 } : undefined} onClick={() => setState(null)}>New Game</button>
+      <button className="primary tall" style={{ flex: 1 }} onClick={() => onGameEnd(state!.gameId)}>Review Game</button>
+      <button className="tall" style={{ flex: 1 }} onClick={() => setState(null)}>New Game</button>
     </>
   ) : (
     <>
-      <button className={narrow ? "tall" : undefined} style={narrow ? { flex: 1 } : undefined} onClick={takeback}
+      <button className="tall" style={{ flex: 1 }} onClick={takeback}
         disabled={loading || takebackLoading || !prevFen} title="Undo your last move and the engine's reply (counts as assisted)">
         {takebackLoading ? "Taking back…" : "Take Back"}
       </button>
-      <button className={narrow ? "tall" : undefined} style={narrow ? { flex: 1 } : undefined} onClick={resign} disabled={loading}>Resign</button>
-      <button className="danger-ghost" style={narrow ? { flex: "0 0 auto" } : undefined} onClick={abort} disabled={loading}>Abort</button>
+      <button className="tall" style={{ flex: 1 }} onClick={resign} disabled={loading}>Resign</button>
+      <button className="danger-ghost" style={{ flex: "0 0 auto" }} onClick={abort} disabled={loading}>Abort</button>
     </>
   );
 
@@ -981,17 +971,24 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
     </div>
   );
 
+  const tapWord = COARSE_POINTER ? "tap" : "click";
+  const status = moveError
+    ? { text: moveError, color: "var(--loss)" }
+    : thinkingSince !== null
+    ? { text: "", color: "var(--text)", thinking: true }
+    : state.gameOver
+    ? null
+    : selectedText
+    ? { text: `${selectedText} — ${tapWord} a dot to move it`, color: "var(--gold)" }
+    : { text: `Your move — ${tapWord} a piece, or drag it`, color: "var(--text-dim)" };
+  const statusLine = status && (
+    <div aria-live="polite" style={{ minHeight: 24, fontSize: 15, fontWeight: 500, color: status.color, textAlign: narrow ? "center" : "left" }}>
+      {"thinking" in status && thinkingSince !== null ? <ThinkingIndicator since={thinkingSince} /> : status.text}
+    </div>
+  );
+
   // ── Phone layout: info line, board, status, controls, then analysis ──
   if (narrow) {
-    const status = moveError
-      ? { text: moveError, color: "var(--loss)" }
-      : loading
-      ? { text: "Opponent is thinking…", color: "var(--text-dim)" }
-      : state.gameOver
-      ? null
-      : selectedText
-      ? { text: `${selectedText} — tap a dot to move it`, color: "var(--gold)" }
-      : { text: "Your move — tap a piece, or drag it", color: "var(--text-dim)" };
     // Game over: the result and what to do next go ABOVE the board, where you're already looking
     if (state.gameOver) return (
       <div ref={resultTopRef} style={{ display: "flex", flexDirection: "column", gap: 12, scrollMarginTop: 12 }}>
@@ -1008,11 +1005,7 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {gameInfoStrip}
         {board}
-        {status && (
-          <div aria-live="polite" style={{ minHeight: 24, fontSize: 15, fontWeight: 500, color: status.color, textAlign: "center" }}>
-            {status.text}
-          </div>
-        )}
+        {statusLine}
         <div style={{ display: "flex", gap: 8 }}>{controls}</div>
         {evalCard}
         {analysisSection}
@@ -1021,33 +1014,22 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
     );
   }
 
+  // ── Desktop: the biggest board that fits the window, one panel beside it ──
   return (
-    <div style={{ display: "flex", flexDirection: "row", gap: 20, alignItems: "flex-start" }}>
-
-      {/* ── Left: Game State ──────────────────────── */}
-      <div style={{ ...colStyle, width: 160 }}>
-        {gameInfoCard}
-        {evalCard}
-        {gameOverCard}
-      </div>
-
-      {/* ── Center: Board ─────────────────────────── */}
+    <div style={{ display: "flex", gap: PANEL_GAP, alignItems: "flex-start", justifyContent: "center" }}>
       {board}
-
-      {/* ── Right: Analysis + Controls ────────────── */}
-      <div style={{ ...colStyle, width: 175, height: boardSize, justifyContent: "space-between" }}>
-        {/* Top: analysis buttons — always present, disabled when N/A */}
+      <div style={{ width: PANEL_W, flexShrink: 0, minHeight: boardSize, display: "flex", flexDirection: "column", gap: 16 }}>
+        {gameInfoStrip}
+        {gameOverCard}
+        {statusLine}
+        {evalCard}
         {analysisSection}
-
-        {/* Legend */}
         {legend}
-
-        {/* Bottom: game controls — pinned, never jump */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+        {/* Game controls pinned to the bottom edge of the board */}
+        <div style={{ display: "flex", gap: 8, marginTop: "auto", paddingTop: 14, borderTop: "1px solid var(--border)" }}>
           {controls}
         </div>
       </div>
-
     </div>
   );
 }
