@@ -216,3 +216,49 @@ def test_analyze_is_idempotent(monkeypatch):
     res = client.post(f"/api/game/{game_id}/analyze")
     assert res.status_code == 200
     assert res.json()["status"] == "already_analyzed"
+
+
+def test_analysis_reuses_the_shared_engine(monkeypatch):
+    # Each analysis used to start its own ~180 MB Stockfish; two at once (Play's auto-analysis
+    # + opening Review) blew the server's 450 MB memory cap. Analysis must use the hint engine.
+    import backend.analysis as analysis
+    game_id = _new_game(moves=["e2e4", "e7e5", "g1f3"])
+    with Session(test_engine) as db:
+        db.get(Game, game_id).result = "1-0"
+        db.commit()
+
+    def no_new_engine(*a, **k):
+        raise AssertionError("analysis started its own Stockfish")
+    monkeypatch.setattr(analysis, "ChessEngine", no_new_engine)
+    res = client.post(f"/api/game/{game_id}/analyze")
+    assert res.status_code == 200, res.text
+    with Session(test_engine) as db:
+        assert db.get(Game, game_id).analyzed == 1
+        assert all(m.classification for m in db.query(Move).filter(Move.game_id == game_id))
+
+
+def test_simultaneous_analyze_requests_analyse_once(monkeypatch):
+    import threading
+    import time
+    game_id = _new_game(moves=["e2e4", "e7e5"])
+    with Session(test_engine) as db:
+        db.get(Game, game_id).result = "1-0"
+        db.commit()
+    runs = []
+
+    def slow_analysis(gid, db, **kw):
+        runs.append(gid)
+        time.sleep(0.3)
+        db.get(Game, gid).analyzed = 1
+        db.commit()
+    monkeypatch.setattr(main, "analyze_game", slow_analysis)
+    results = []
+    threads = [threading.Thread(target=lambda: results.append(client.post(f"/api/game/{game_id}/analyze")))
+               for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert [r.status_code for r in results] == [200, 200]
+    assert runs == [game_id]
+    assert sorted(r.json()["status"] for r in results) == ["already_analyzed", "analyzed"]

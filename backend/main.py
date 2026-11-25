@@ -1,4 +1,5 @@
 # backend/main.py
+import threading
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,6 +25,7 @@ _game_engine = EngineSlot(lambda: ChessEngine(elo=DEFAULT_ENGINE_ELO))
 _hint_engine = EngineSlot(lambda: ChessEngine(full_strength=True))
 # Maia: human-trained opponent (lc0), only used to choose the opponent's moves.
 _maia_engine = EngineSlot(lambda: MaiaEngine())
+_analysis_lock = threading.Lock()   # post-game analyses run one at a time
 
 
 def run_game_engine(engine: str, elo: int, fn):
@@ -295,13 +297,16 @@ def analyze(game_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "Game not found")
     if game.result == "*":
         raise HTTPException(400, "Game is still in progress")
-    if game.analyzed:
-        # Idempotent: Play auto-analyzes at game end and Review may ask again.
-        return {"status": "already_analyzed", "game_id": game_id}
-    try:
-        analyze_game(game_id, db)
-    except Exception as e:
-        raise HTTPException(500, f"Analysis failed: {e}")
+    # One analysis at a time: Play auto-analyzes at game end and opening Review asks again,
+    # often in the same second. The second request waits here, then finds it done.
+    with _analysis_lock:
+        db.refresh(game)
+        if game.analyzed:
+            return {"status": "already_analyzed", "game_id": game_id}
+        try:
+            analyze_game(game_id, db, run_engine=run_hint_engine)
+        except Exception as e:
+            raise HTTPException(500, f"Analysis failed: {e}")
     write_game_file(game_id, db)
     return {"status": "analyzed", "game_id": game_id}
 
