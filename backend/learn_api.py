@@ -17,6 +17,7 @@ from corpus_tools.puzzles import get_puzzle, select_puzzles
 from .config import CORPUS_DIR, HINT_TIME, PUZZLES_DB
 from .db import LearnAttempt, LearnReview, LearnState, get_db
 from .game_utils import mover_win_loss
+from .identity import current_user
 from .learn_content import Corpus, find_drill, load_corpus, topic_detail, topic_summaries
 from .learn_progress import START_RATING, next_review, topic_progress, update_rating
 
@@ -44,24 +45,24 @@ def _now() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
 
 
-def _state(db: Session, key: str, default: float) -> float:
-    row = db.get(LearnState, key)
+def _state(db: Session, user: str, key: str, default: float) -> float:
+    row = db.get(LearnState, (user, key))
     return row.value if row else default
 
 
-def _set_state(db: Session, key: str, value: float) -> None:
-    row = db.get(LearnState, key)
+def _set_state(db: Session, user: str, key: str, value: float) -> None:
+    row = db.get(LearnState, (user, key))
     if row:
         row.value = value
     else:
-        db.add(LearnState(key=key, value=value))
+        db.add(LearnState(user=user, key=key, value=value))
 
 
 # ── Topics ──────────────────────────────────────────────────────────────────────
-def _progress(db: Session, corpus: Corpus, t: dict) -> dict:
+def _progress(db: Session, corpus: Corpus, t: dict, user: str) -> dict:
     if t["has_puzzles"]:
         rows = (db.query(LearnAttempt.solved)
-                .filter(LearnAttempt.topic == t["slug"], LearnAttempt.kind == "puzzle",
+                .filter(LearnAttempt.user == user, LearnAttempt.topic == t["slug"], LearnAttempt.kind == "puzzle",
                         LearnAttempt.rating_after.isnot(None))
                 .order_by(LearnAttempt.id).all())
         return topic_progress([bool(r[0]) for r in rows])
@@ -69,7 +70,8 @@ def _progress(db: Session, corpus: Corpus, t: dict) -> dict:
     latest: dict[str, bool] = {}
     if drills:
         rows = (db.query(LearnAttempt.ref, LearnAttempt.solved)
-                .filter(LearnAttempt.kind == "book", LearnAttempt.ref.in_([d["ref"] for d in drills]))
+                .filter(LearnAttempt.user == user, LearnAttempt.kind == "book",
+                        LearnAttempt.ref.in_([d["ref"] for d in drills]))
                 .order_by(LearnAttempt.id).all())
         latest = {ref: bool(solved) for ref, solved in rows}
     solved = sum(latest.values())
@@ -78,14 +80,15 @@ def _progress(db: Session, corpus: Corpus, t: dict) -> dict:
 
 
 @router.get("/topics")
-def list_topics(db: Session = Depends(get_db), corpus: Corpus = Depends(get_corpus)):
+def list_topics(db: Session = Depends(get_db), corpus: Corpus = Depends(get_corpus),
+                user: str = Depends(current_user)):
     groups: list[dict] = []
     for t in topic_summaries(corpus):
         if not groups or groups[-1]["group"] != t["group"]:
             groups.append({"group": t["group"], "topics": []})
-        groups[-1]["topics"].append({**t, "progress": _progress(db, corpus, t)})
-    due = db.query(LearnReview).filter(LearnReview.due_at <= _now()).count()
-    return {"rating": _state(db, "puzzle_rating", START_RATING), "reviews_due": due, "groups": groups}
+        groups[-1]["topics"].append({**t, "progress": _progress(db, corpus, t, user)})
+    due = db.query(LearnReview).filter(LearnReview.user == user, LearnReview.due_at <= _now()).count()
+    return {"rating": _state(db, user, "puzzle_rating", START_RATING), "reviews_due": due, "groups": groups}
 
 
 @router.get("/topics/{slug}")
@@ -98,16 +101,18 @@ def get_topic(slug: str, corpus: Corpus = Depends(get_corpus), puzzles_db: Path 
 
 @router.get("/topics/{slug}/puzzles")
 def topic_puzzles(slug: str, n: int = 10, db: Session = Depends(get_db),
-                  corpus: Corpus = Depends(get_corpus), puzzles_db: Path = Depends(get_puzzles_db)):
+                  corpus: Corpus = Depends(get_corpus), puzzles_db: Path = Depends(get_puzzles_db),
+                  user: str = Depends(current_user)):
     detail = topic_detail(corpus, slug)
     if detail is None:
         raise HTTPException(404, "Unknown topic")
-    rating = _state(db, "puzzle_rating", START_RATING)
+    rating = _state(db, user, "puzzle_rating", START_RATING)
     if not detail["themes"]:
         return {"rating": rating, "puzzles": []}
     if not Path(puzzles_db).exists():
         raise HTTPException(503, NO_PUZZLE_DB)
-    seen = {r[0] for r in db.query(LearnAttempt.ref).filter(LearnAttempt.kind == "puzzle").all()}
+    seen = {r[0] for r in db.query(LearnAttempt.ref)
+            .filter(LearnAttempt.user == user, LearnAttempt.kind == "puzzle").all()}
     puzzles = select_puzzles(puzzles_db, detail["themes"], rating, max(1, min(n, 20)), seen)
     return {"rating": rating, "puzzles": [{k: p[k] for k in ("id", "fen", "moves", "rating", "themes")}
                                            for p in puzzles]}
@@ -126,22 +131,24 @@ class AttemptRequest(BaseModel):
 
 
 @router.post("/attempts")
-def record_attempt(req: AttemptRequest, db: Session = Depends(get_db)):
+def record_attempt(req: AttemptRequest, db: Session = Depends(get_db), user: str = Depends(current_user)):
     solved = req.solved and not req.revealed          # a shown solution is a miss
-    first = db.query(LearnAttempt).filter(LearnAttempt.kind == req.kind, LearnAttempt.ref == req.ref).first() is None
+    first = db.query(LearnAttempt).filter(LearnAttempt.user == user, LearnAttempt.kind == req.kind,
+                                          LearnAttempt.ref == req.ref).first() is None
     rated = req.kind == "puzzle" and req.context == "lesson" and first and req.puzzle_rating is not None
     before = after = None
     if rated:
-        before = _state(db, "puzzle_rating", START_RATING)
-        n_rated = int(_state(db, "rated_attempts", 0))
+        before = _state(db, user, "puzzle_rating", START_RATING)
+        n_rated = int(_state(db, user, "rated_attempts", 0))
         after = update_rating(before, req.puzzle_rating, solved, n_rated)
-        _set_state(db, "puzzle_rating", after)
-        _set_state(db, "rated_attempts", n_rated + 1)
+        _set_state(db, user, "puzzle_rating", after)
+        _set_state(db, user, "rated_attempts", n_rated + 1)
     now = _now()
-    db.add(LearnAttempt(kind=req.kind, ref=req.ref, topic=req.topic, context=req.context, solved=int(solved),
+    db.add(LearnAttempt(user=user, kind=req.kind, ref=req.ref, topic=req.topic, context=req.context, solved=int(solved),
                         revealed=int(req.revealed), seconds=req.seconds, puzzle_rating=req.puzzle_rating,
                         rating_before=before, rating_after=after, created_at=now))
-    item = db.query(LearnReview).filter(LearnReview.kind == req.kind, LearnReview.ref == req.ref).first()
+    item = db.query(LearnReview).filter(LearnReview.user == user, LearnReview.kind == req.kind,
+                                        LearnReview.ref == req.ref).first()
     if item and solved and req.context == "lesson":
         # Re-solving a queued position outside a review (e.g. "restart" right after a miss)
         # mustn't advance it — only spaced review does that.
@@ -159,7 +166,7 @@ def record_attempt(req: AttemptRequest, db: Session = Depends(get_db)):
             item.step, item.due_at, item.updated_at = step, due, now
             item.topic = req.topic or item.topic
         else:
-            db.add(LearnReview(kind=req.kind, ref=req.ref, topic=req.topic, step=step, due_at=due, updated_at=now))
+            db.add(LearnReview(user=user, kind=req.kind, ref=req.ref, topic=req.topic, step=step, due_at=due, updated_at=now))
         review = {"step": step, "due_at": due.isoformat()}
     db.commit()
     return {"rated": rated, "rating_before": before, "rating_after": after, "review": review}
@@ -167,10 +174,11 @@ def record_attempt(req: AttemptRequest, db: Session = Depends(get_db)):
 
 @router.get("/reviews")
 def due_reviews(db: Session = Depends(get_db), corpus: Corpus = Depends(get_corpus),
-                puzzles_db: Path = Depends(get_puzzles_db)):
+                puzzles_db: Path = Depends(get_puzzles_db), user: str = Depends(current_user)):
     have_db = Path(puzzles_db).exists()
     items = []
-    for r in db.query(LearnReview).filter(LearnReview.due_at <= _now()).order_by(LearnReview.due_at).all():
+    for r in (db.query(LearnReview).filter(LearnReview.user == user, LearnReview.due_at <= _now())
+              .order_by(LearnReview.due_at).all()):
         if r.kind == "puzzle":
             p = get_puzzle(puzzles_db, r.ref) if have_db else None
             position = p and {k: p[k] for k in ("id", "fen", "moves", "rating", "themes")}

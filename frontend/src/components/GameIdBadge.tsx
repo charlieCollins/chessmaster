@@ -3,6 +3,7 @@
 // pasted into a conversation ("in game k7m2qx, why was move 14 a blunder?").
 // The full game lives in games/<id>.pgn.
 import { useEffect, useRef, useState } from "react";
+import { gameLink } from "../links";
 
 export default function GameIdBadge({ id, size = 12 }: { id: string | null | undefined; size?: number }) {
   const [copied, setCopied] = useState(false);
@@ -13,7 +14,7 @@ export default function GameIdBadge({ id, size = 12 }: { id: string | null | und
   async function copy(e: React.MouseEvent) {
     e.stopPropagation();
     try {
-      await navigator.clipboard.writeText(id!);
+      await navigator.clipboard.writeText(gameLink(id!));
       setCopied(true);
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => setCopied(false), 1200);
@@ -26,14 +27,14 @@ export default function GameIdBadge({ id, size = 12 }: { id: string | null | und
     <button
       className="ghost"
       onClick={copy}
-      title={`Game ID — click to copy. Saved as games/${id}.pgn`}
+      title={`Game ${id} — click to copy a link to it`}
       style={{
         fontFamily: "var(--font-mono)", fontSize: size, padding: "1px 6px",
         color: copied ? "var(--good)" : "var(--gold)", letterSpacing: "0.06em",
         border: "1px solid var(--border-hi)", borderRadius: 4, cursor: "copy",
       }}
     >
-      {copied ? "copied" : id}
+      {copied ? "link copied" : id}
     </button>
   );
 }

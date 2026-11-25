@@ -62,4 +62,4 @@ def test_tables_created():
     eng = create_engine("sqlite://")
     init_db(eng)
     names = set(inspect(eng).get_table_names())
-    assert {"learn_attempts", "learn_reviews", "learn_state"} <= names
+    assert {"learn_attempts", "learn_reviews", "learn_user_state"} <= names

@@ -7,6 +7,7 @@ import { Chess } from "chess.js";
 import { type EngineKind, opponentLabel } from "../opponents";
 import { grade, estimateElo, type AccuracySummary } from "../ratings";
 import GameIdBadge from "../components/GameIdBadge";
+import { showGameLink } from "../links";
 import { useBoardSizeFor, useNarrow } from "../viewport";
 
 const COLORS: Record<string, string> = {
@@ -196,6 +197,7 @@ export default function Review({ gameId }: ReviewProps) {
       .then((data: GameData) => {
         if (cancelled) return;
         setGame(data);
+        if (data.public_id) showGameLink(data.public_id);
         if (!data.analyzed && data.moves.length > 0) {
           runAutoAnalysis(data);
         }

@@ -61,6 +61,14 @@ Use python-chess (`chess.pgn.read_game`) to replay positions when explaining.
   Never hand-edit generated files; edit `books/*/diagrams.tsv` or `topics/topics.toml`.
 - Tools: `corpus_tools/descriptive.py` (old "P - K 4" notation → moves), `gutenberg_html.py`, `mainline.py`, `book.py`, `puzzles.py`, `topics.py`.
 
+## Users and links
+
+Every game and all Learn progress belong to a user. `backend/identity.py` (`current_user` dependency): behind
+Cloudflare Access it verifies the signed `Cf-Access-Jwt-Assertion` token (team domain + app audience from
+`/etc/chess/chess.env` on the server) and uses its email; never trusts a plain email header. Locally (no CF config)
+everyone is `CHESS_LOCAL_USER` (default `local`). Another user's game returns 404. `init_db()` gives pre-sign-in rows
+to `CHESS_OWNER`. Links: `/?id=<public_id>` opens that game's Review (`frontend/src/links.ts`); the ID badge copies it.
+
 ## Architecture
 
 - `backend/main.py` — FastAPI app, routes, lifespan (engine init/shutdown)
@@ -88,7 +96,9 @@ Use python-chess (`chess.pgn.read_game`) to replay positions when explaining.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/engines` | Opponent families available: `{maia: {available, levels}}` |
+| GET | `/api/engines` | Opponent families available: `{maia: {available, levels}}` (no sign-in needed) |
+| GET | `/api/me` | The signed-in user: `{user}` (email behind Cloudflare Access; `local` in development) |
+| GET | `/api/games/lookup?id=` | Resolve a shareable link (`?id=k7m2qx` or `?id=123`) to `{game_id, public_id}` — own games only |
 | POST | `/api/game` | Start new game (`player_color`, `engine` = `stockfish`\|`maia`, `engine_elo`; Maia levels 1100–1900, 400 if Maia not installed) |
 | GET | `/api/game/{id}` | Get game state + moves (+ per-side `accuracy` once analyzed) |
 | POST | `/api/game/{id}/move` | Make a move. Returns engine reply, `eval_cp` (after your move), `engine_eval_cp` (after the reply), `termination`. Nothing is saved if the engine fails. |
@@ -177,6 +187,7 @@ games
   source        TEXT        -- game source; default "local" (reserved for future PGN import)
   analyzed      INTEGER     -- 0 | 1
   assisted      INTEGER     -- 0 | 1 (hint used during active play)
+  user          TEXT        -- owner (email); indexed. learn_attempts / learn_reviews have it too
 
 moves
   id            INTEGER PK
@@ -194,8 +205,8 @@ moves
 learn_attempts   -- every try at a Learn position (the daily trainer's input)
   kind ("puzzle"|"book"), ref (Lichess id | "<book>:<Fig>"), topic, context ("lesson"|"review"),
   solved (first try), revealed, seconds, puzzle_rating, rating_before/rating_after (null = unrated), created_at
-learn_reviews    -- spaced review queue: kind, ref (unique together), topic, step (0..3 → 1/3/7/21 days), due_at
-learn_state      -- key/value: puzzle_rating, rated_attempts
+learn_reviews    -- spaced review queue: user, kind, ref (unique together), topic, step (0..3 → 1/3/7/21 days), due_at
+learn_user_state -- (user, key) → value: puzzle_rating, rated_attempts (old single-user learn_state copied to CHESS_OWNER)
 ```
 
 ## Testing

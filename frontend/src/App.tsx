@@ -5,6 +5,8 @@ import Play from "./pages/Play";
 import Review from "./pages/Review";
 import Learn from "./pages/Learn";
 import { THEMES, ThemeContext } from "./themes";
+import { API } from "./config";
+import { clearGameLink, gameRefFromUrl } from "./links";
 import "./App.css";
 
 type Page = "home" | "play" | "review" | "learn";
@@ -60,11 +62,22 @@ export default function App() {
     Object.entries(boardTheme.vars).forEach(([k, v]) => root.setProperty(k, v));
   }, [boardTheme]);
 
+  // Deep link: /?id=k7m2qx (or ?id=123) opens that game's review
+  useEffect(() => {
+    const ref = gameRefFromUrl();
+    if (!ref) return;
+    fetch(`${API}/api/games/lookup?id=${encodeURIComponent(ref)}`)
+      .then(r => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((g: { game_id: number }) => { setReviewGameId(g.game_id); setPage("review"); })
+      .catch(() => clearGameLink());
+  }, []);
+
   function navigate(newPage: Page) {
     if (gameActive && newPage !== "play") {
       if (!window.confirm("You have a game in progress. Leave anyway? In-progress games can't be resumed and won't appear in your history.")) return;
     }
     setPage(newPage);
+    if (newPage !== "review") clearGameLink();
     if (newPage !== "play") setGameActive(false);
   }
 

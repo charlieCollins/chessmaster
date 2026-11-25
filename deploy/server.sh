@@ -86,6 +86,5 @@ if ! curl -sf --unix-socket /run/chess/chess.sock http://localhost/api/engines; 
     exit 1
 fi
 echo
-curl -sf --unix-socket /run/chess/chess.sock http://localhost/api/stats | head -c 200; echo
 rm -rf "$STAGE"
 echo "== done"
