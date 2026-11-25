@@ -10,6 +10,7 @@ import { useBoardSize } from "./boardUtils";
 import { applyUci, checkMove, userMoveIndices, type Line } from "./solveLine";
 import { tapAction, selectionStyles, layerStyles, selectedLabel } from "../../boardTap";
 import { DRAG_ACTIVATION_PX } from "../../viewport";
+import { StepIcon } from "../../ui";
 
 export interface SolveResult { solved: boolean; revealed: boolean; seconds: number }
 
@@ -190,17 +191,17 @@ export default function SolveBoard({ line, judge, onResult, onNext, nextLabel = 
   const squareStyles = layerStyles(baseStyles, showSelection ? selectionStyles(fen, selected) : {});
   const selectedText = showSelection ? selectedLabel(fen, selected) : null;
 
-  const toneColor = { good: "var(--good)", bad: "var(--loss)", info: "var(--text-dim)" };
+  const toneColor = { good: "var(--good)", bad: "var(--loss)", info: "var(--text-muted)" };
 
   return (
-    <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "flex-start" }}>
-      <div style={{ position: "relative" }}>
+    <div style={{ display: "flex", gap: 28, flexWrap: "wrap", alignItems: "flex-start" }}>
+      <div className="board-frame">
         <Chessboard options={{
           position: shownFen,
           onPieceDrop: onDrop,
           onSquareClick,
           boardOrientation: line.userColor === "w" ? "white" : "black",
-          boardStyle: { width: size, height: size, borderRadius: "var(--radius)" },
+          boardStyle: { width: size - 12, height: size - 12, borderRadius: 4 },
           darkSquareStyle: { backgroundColor: theme.dark },
           lightSquareStyle: { backgroundColor: theme.light },
           squareStyles,
@@ -208,67 +209,64 @@ export default function SolveBoard({ line, judge, onResult, onNext, nextLabel = 
           dragActivationDistance: DRAG_ACTIVATION_PX,
         }} />
         {pendingPromo && (
-          <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex",
-            alignItems: "center", justifyContent: "center", zIndex: 100, borderRadius: "var(--radius)" }}>
-            <div style={{ background: "var(--surface)", border: "1px solid var(--border-hi)", borderRadius: "var(--radius-lg)",
-              padding: "18px 22px", display: "flex", flexDirection: "column", gap: 12, alignItems: "center" }}>
-              <div className="mono dim" style={{ fontSize: 12, letterSpacing: "0.1em" }}>PROMOTE TO</div>
-              <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ position: "absolute", inset: 0, background: "rgba(5, 10, 8, 0.72)", display: "flex",
+            alignItems: "center", justifyContent: "center", zIndex: 100, borderRadius: 10 }}>
+            <div className="panel stack" style={{ alignItems: "center" }} role="dialog" aria-label="Promote to">
+              <h3>Promote to</h3>
+              <div className="row" style={{ gap: 8, justifyContent: "center" }}>
                 {([["q", "♛ Queen"], ["r", "♜ Rook"], ["b", "♝ Bishop"], ["n", "♞ Knight"]] as const).map(([p, label], i) => (
-                  <button key={p} className="primary" autoFocus={i === 0} style={{ padding: "8px 14px", fontSize: 13 }}
+                  <button key={p} className={i === 0 ? "primary" : undefined} autoFocus={i === 0}
                     onClick={() => { const m = pendingPromo.from + pendingPromo.to + p; setPendingPromo(null); void tryMove(m); }}>
                     {label}
                   </button>
                 ))}
               </div>
-              <button className="ghost" style={{ fontSize: 11 }} onClick={() => setPendingPromo(null)}>Cancel</button>
+              <button className="quiet sm" onClick={() => setPendingPromo(null)}>Cancel</button>
             </div>
           </div>
         )}
       </div>
 
-      <div style={{ flex: 1, minWidth: 240, display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ fontFamily: "var(--font-display)", fontSize: 16, color: "var(--text-bright)" }}>
-          {prompt ?? `You play ${line.userColor === "w" ? "White" : "Black"}`}
-        </div>
-        {status === "waiting" && !finished && <div className="mono dim" style={{ fontSize: 12 }}>…</div>}
+      <div className="stack" style={{ flex: 1, minWidth: 260, gap: 14 }}>
+        <h3>{prompt ?? `You play ${line.userColor === "w" ? "White" : "Black"}. Find the best move.`}</h3>
+        {status === "waiting" && !finished && <p className="muted small">The opponent is replying…</p>}
         {status === "your-move" && !message && (
-          <div className="mono dim" style={{ fontSize: 12 }}>
-            Find the best move{asked.length > 1 ? ` (${asked.indexOf(ply) + 1} of ${asked.length})` : ""}.
-          </div>
+          <p className="muted">
+            Your move{asked.length > 1 ? ` (${asked.indexOf(ply) + 1} of ${asked.length})` : ""}.
+          </p>
         )}
         {selectedText && (
-          <div aria-live="polite" style={{ fontSize: 15, fontWeight: 500, color: "var(--gold)" }}>
-            {selectedText} — tap a dot to move it
-          </div>
+          <p aria-live="polite" style={{ fontWeight: 500, color: "var(--accent)" }}>
+            {selectedText}: tap a dot to move it
+          </p>
         )}
-        {message && <div style={{ fontSize: 13, color: toneColor[message.tone], lineHeight: 1.5 }}>{message.text}</div>}
+        {message && <p style={{ color: toneColor[message.tone], fontWeight: message.tone === "info" ? 400 : 500 }}>{message.text}</p>}
         {ply > 0 && (
-          <div className="mono" style={{ fontSize: 12, color: "var(--text)", lineHeight: 1.7 }}>
+          <div className="mono small" style={{ lineHeight: 1.7 }}>
             {moveListText(line, fens, Math.min(ply, fens.length - 1))}
           </div>
         )}
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div className="row" style={{ gap: 8 }}>
+          {onNext && finished && <button className="primary" onClick={onNext}>{nextLabel}</button>}
+          {more && contPly === null && (
+            <button onClick={() => setContPly(ply)}>See how it continues</button>
+          )}
           {!finished && (
-            <button className="ghost" disabled={status !== "your-move"} onClick={showSolution} style={{ fontSize: 12 }}>
-              Show solution
+            <button className="quiet" disabled={status !== "your-move"} onClick={showSolution}>
+              Show the solution
             </button>
           )}
-          {more && contPly === null && (
-            <button className="ghost" onClick={() => setContPly(ply)} style={{ fontSize: 12 }}>See how it continues</button>
-          )}
-          {onNext && finished && <button className="primary" onClick={onNext} style={{ fontSize: 12 }}>{nextLabel} ›</button>}
         </div>
 
         {contPly !== null && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ display: "flex", gap: 6 }}>
-              <button className="ghost" disabled={contPly <= ply} onClick={() => setContPly(contPly - 1)} style={{ fontSize: 12 }}>‹</button>
-              <button className="ghost" disabled={contPly >= line.moves.length} onClick={() => setContPly(contPly + 1)} style={{ fontSize: 12 }}>›</button>
-              <button className="ghost" onClick={() => setContPly(null)} style={{ fontSize: 12 }}>Back to the position</button>
+          <div className="panel tight stack sm">
+            <div className="row" style={{ gap: 6 }}>
+              <button className="sm" aria-label="Previous move" disabled={contPly <= ply} onClick={() => setContPly(contPly - 1)}><StepIcon dir="prev" /></button>
+              <button className="sm" aria-label="Next move" disabled={contPly >= line.moves.length} onClick={() => setContPly(contPly + 1)}><StepIcon dir="next" /></button>
+              <button className="quiet sm" onClick={() => setContPly(null)}>Back to the position</button>
             </div>
-            <div className="mono" style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.7 }}>
+            <div className="mono small muted" style={{ lineHeight: 1.7 }}>
               {moveListText(line, fens, contPly)}
             </div>
           </div>

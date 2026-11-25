@@ -2,7 +2,9 @@
 // Learn hub: corpus topics by group (from /api/learn), review queue, openings.
 import { useEffect, useState } from "react";
 import type { OpeningKey } from "../data/openings";
-import { getTopics, type TopicSummary, type TopicsResponse } from "./learn/api";
+import { getStatus, getTopics, type LearnStatus, type TopicStatus, type TopicSummary, type TopicsResponse } from "./learn/api";
+import Progress, { StateTag } from "./learn/Progress";
+import { Meter, PageHead, SectionHead, Segmented } from "../ui";
 import { OpeningDetail, OpeningsHub } from "./learn/Openings";
 import ReviewSession from "./learn/ReviewSession";
 import TopicLesson from "./learn/TopicLesson";
@@ -17,55 +19,37 @@ const ICONS: Record<string, string> = {
   "pawn-structure": "♟",
 };
 
-function ProgressBar({ topic }: { topic: TopicSummary }) {
-  const { accuracy, attempts, solved } = topic.progress;
-  if (accuracy === null) {
-    return (
-      <div className="mono dim" style={{ fontSize: 11 }}>
-        {attempts ? `${solved}/${attempts} first try — keep going` : "—"}
-      </div>
-    );
-  }
-  const pct = Math.round(accuracy * 100);
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <div style={{ flex: 1, height: 6, background: "var(--raised)", borderRadius: 3, overflow: "hidden" }}>
-        <div style={{ width: `${pct}%`, height: "100%", background: "var(--gold)" }} />
-      </div>
-      <span className="mono" style={{ fontSize: 11, color: "var(--text-dim)" }}>{pct}%</span>
-    </div>
-  );
-}
-
 function TopicCard({ icon, title, description, footer, onClick }: {
   icon: string; title: string; description: string; footer?: React.ReactNode; onClick: () => void;
 }) {
-  const [hovered, setHovered] = useState(false);
   return (
-    <div
-      onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        background: hovered ? "var(--raised)" : "var(--surface)",
-        border: "1px solid", borderColor: hovered ? "var(--gold)" : "var(--border)",
-        borderRadius: "var(--radius-lg)", padding: "16px 18px", cursor: "pointer",
-        width: 220, display: "flex", flexDirection: "column", gap: 8,
-        transition: "border-color var(--transition), background var(--transition)", userSelect: "none",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <span style={{ fontSize: 24, width: 28, textAlign: "center" }}>{icon}</span>
-        <span style={{ fontFamily: "var(--font-display)", fontSize: 15, color: "var(--text-bright)" }}>{title}</span>
-      </div>
-      <div style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.55, flex: 1 }}>{description}</div>
-      {footer}
-    </div>
+    <button className="topic-card" onClick={onClick}>
+      <span className="topic-icon" aria-hidden>{icon}</span>
+      <span className="topic-title">{title}</span>
+      <span className="topic-desc">{description}</span>
+      {footer && <span className="topic-foot">{footer}</span>}
+    </button>
+  );
+}
+
+function CardFooter({ topic, state }: { topic: TopicSummary; state?: TopicStatus }) {
+  const { accuracy, attempts, solved } = topic.progress;
+  return (
+    <>
+      {state ? <StateTag state={state.status} /> : <span />}
+      {attempts > 0 && (
+        <span className="row xsmall muted" style={{ gap: 8, flexWrap: "nowrap" }}>
+          {accuracy !== null && <span style={{ width: 56 }}><Meter value={accuracy} /></span>}
+          {solved} of {attempts}
+        </span>
+      )}
+    </>
   );
 }
 
 type View =
   | { kind: "hub" }
+  | { kind: "progress" }
   | { kind: "topic"; slug: string }
   | { kind: "review" }
   | { kind: "openings"; key: OpeningKey | null };
@@ -73,13 +57,16 @@ type View =
 export default function Learn() {
   const [view, setView] = useState<View>({ kind: "hub" });
   const [data, setData] = useState<TopicsResponse | null>(null);
+  const [status, setStatus] = useState<LearnStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const listing = view.kind === "hub" || view.kind === "progress";
   useEffect(() => {
-    if (view.kind !== "hub") return;
-    getTopics().then(d => { setData(d); setError(null); })
-      .catch(() => setError("Could not reach the server. Is the backend running?"));
-  }, [view.kind]);
+    if (!listing) return;
+    Promise.all([getTopics(), getStatus()])
+      .then(([d, st]) => { setData(d); setStatus(st); setError(null); })
+      .catch(() => setError("Couldn't reach the server. Check your connection and reload."));
+  }, [listing]);
 
   const toHub = () => setView({ kind: "hub" });
 
@@ -91,38 +78,43 @@ export default function Learn() {
     return <OpeningDetail openingKey={view.key} onBack={() => setView({ kind: "openings", key: null })} />;
 
   const openTopic = (slug: string) => setView({ kind: "topic", slug });
+  const states = new Map(status?.groups.flatMap(g => g.topics.map(t => [t.slug, t] as const)) ?? []);
+  const due = data?.reviews_due ?? 0;
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 16, flexWrap: "wrap", marginBottom: 8 }}>
-        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, color: "var(--text-bright)" }}>Learn</h2>
-        {data && (
-          <span className="mono" style={{ fontSize: 13, color: "var(--text-dim)" }}>
-            puzzle rating <span style={{ color: "var(--gold)" }}>{Math.round(data.rating)}</span>
-          </span>
-        )}
-        {data && (
-          <button className={data.reviews_due ? "primary" : "ghost"} disabled={!data.reviews_due}
-            onClick={() => setView({ kind: "review" })} style={{ marginLeft: "auto", fontSize: 12, padding: "5px 14px" }}>
-            {data.reviews_due ? `Review ${data.reviews_due} due` : "No reviews due"}
-          </button>
-        )}
+      <PageHead
+        title="Learn"
+        lead="Each topic: read the ideas and Capablanca's lesson, find his moves on the board, then solve real puzzles at your level."
+        actions={data && (due
+          ? <button className="primary lg" onClick={() => setView({ kind: "review" })}>Review {due} position{due === 1 ? "" : "s"}</button>
+          : <span className="small muted">Nothing to review today</span>)}
+      />
+      <div className="row between" style={{ marginBottom: 8 }}>
+        <Segmented<"hub" | "progress"> label="Learn view" value={view.kind === "progress" ? "progress" : "hub"}
+          onChange={k => setView({ kind: k })}
+          options={[{ value: "hub", label: "Topics" }, { value: "progress", label: "My progress" }]} />
+        {data && <span className="small muted">Puzzle rating <b style={{ color: "var(--accent)", fontWeight: 600 }}>{Math.round(data.rating)}</b></span>}
       </div>
-      <p style={{ color: "var(--text-dim)", fontSize: 13, marginBottom: 24 }}>
-        Each topic: read the key ideas and Capablanca's lesson, find his moves on the board, then practise real puzzles at your level.
-      </p>
-      {error && <div style={{ color: "var(--loss)", fontFamily: "var(--font-mono)", fontSize: 13, marginBottom: 16 }}>{error}</div>}
-      {!data && !error && <div className="dim mono">Loading…</div>}
-      {data && data.groups.map(g => (
-        <section key={g.group} style={{ marginBottom: 28 }}>
-          <div className="section-label" style={{ marginBottom: 12 }}>{g.group}</div>
-          <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+
+      {error && <p className="error" role="alert">{error}</p>}
+      {!data && !error && <p className="muted">Loading topics…</p>}
+
+      {view.kind === "progress" && status && <div style={{ marginTop: 24 }}><Progress status={status} onOpen={openTopic} /></div>}
+
+      {view.kind === "hub" && data && data.groups.map(g => (
+        <section key={g.group}>
+          <SectionHead title={g.group} aside={(() => {
+            const passed = g.topics.filter(t => states.get(t.slug)?.status === "passed").length;
+            return passed ? `${passed} of ${g.topics.length} passed` : undefined;
+          })()} />
+          <div className="topic-grid">
             {g.topics.map(t => (
               <TopicCard key={t.slug} icon={ICONS[t.slug] ?? "♟"} title={t.title} description={t.summary}
-                footer={<ProgressBar topic={t} />} onClick={() => openTopic(t.slug)} />
+                footer={<CardFooter topic={t} state={states.get(t.slug)} />} onClick={() => openTopic(t.slug)} />
             ))}
             {g.group === "Strategy" && (
-              <TopicCard icon="♟♙" title="Openings" description="18 openings / 58 lines — Italian, Spanish, Sicilian, French, Caro-Kann, Queen's Gambit and more."
+              <TopicCard icon="♙" title="Openings" description="18 openings and 58 lines: Italian, Spanish, Sicilian, French, Caro-Kann, Queen's Gambit and more."
                 onClick={() => setView({ kind: "openings", key: null })} />
             )}
           </div>

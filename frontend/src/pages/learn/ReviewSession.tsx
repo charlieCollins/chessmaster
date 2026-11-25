@@ -3,13 +3,15 @@
 import { useEffect, useState } from "react";
 import { getReviews, judge, postAttempt, type AttemptResponse, type ReviewItem } from "./api";
 import SolveBoard, { type SolveResult } from "./SolveBoard";
+import { BackLink } from "./TopicLesson";
+import { PageHead } from "../../ui";
 import { drillToLine, lichessToLine } from "./solveLine";
 
 const STEP_DAYS = [1, 3, 7, 21];
 
 function nextDue(a: AttemptResponse | undefined): string {
   if (!a) return "";
-  if (!a.review) return "Learned — it leaves the review queue.";
+  if (!a.review) return "Learned. It leaves your reviews.";
   return `Comes back in ${STEP_DAYS[a.review.step]} day${STEP_DAYS[a.review.step] === 1 ? "" : "s"}.`;
 }
 
@@ -25,31 +27,29 @@ export default function ReviewSession({ onBack }: { onBack: () => void }) {
   }, []);
 
   const header = (
-    <div style={{ display: "flex", alignItems: "baseline", gap: 14, marginBottom: 16 }}>
-      <button className="ghost" onClick={onBack} style={{ fontSize: 12 }}>← Learn</button>
-      <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, color: "var(--text-bright)" }}>Review</h2>
-      {items && items.length > 0 && i < items.length && (
-        <span className="mono dim" style={{ fontSize: 12 }}>{i + 1} of {items.length}</span>
-      )}
-    </div>
+    <>
+      <BackLink onClick={onBack} />
+      <PageHead title="Review"
+        lead={items && items.length > 0 && i < items.length
+          ? `Position ${i + 1} of ${items.length}. Positions you missed before, spaced out so they stick.`
+          : "Positions you missed before, spaced out so they stick."} />
+    </>
   );
 
-  if (error) return <div>{header}<div style={{ color: "var(--loss)", fontSize: 13 }}>{error}</div></div>;
-  if (!items) return <div>{header}<div className="dim mono">Loading…</div></div>;
+  if (error) return <div>{header}<p className="error" role="alert">{error}</p></div>;
+  if (!items) return <div>{header}<p className="muted">Loading…</p></div>;
   if (items.length === 0)
-    return <div>{header}<p className="dim">Nothing due — come back tomorrow.</p></div>;
+    return <div>{header}<div className="empty-state"><h3>Nothing due</h3><p style={{ margin: "0 auto" }}>Come back tomorrow, or practise a topic.</p></div></div>;
 
   if (i >= items.length) {
     const solved = results.filter(Boolean).length;
     return (
       <div>
         {header}
-        <div style={{ display: "flex", flexDirection: "column", gap: 12, alignItems: "flex-start" }}>
-          <div style={{ fontFamily: "var(--font-display)", fontSize: 20, color: "var(--text-bright)" }}>
-            {solved} of {items.length} solved first try
-          </div>
-          <p className="dim" style={{ fontSize: 13 }}>
-            Solved positions come back after a longer gap (1 → 3 → 7 → 21 days); missed ones start again tomorrow.
+        <div className="panel stack" style={{ alignItems: "flex-start", maxWidth: 560 }}>
+          <h2>{solved} of {items.length} solved first try</h2>
+          <p className="muted">
+            Solved positions come back after a longer gap (1, 3, 7, then 21 days). Missed ones start again tomorrow.
           </p>
           <button className="primary" onClick={onBack}>Back to Learn</button>
         </div>
@@ -66,14 +66,15 @@ export default function ReviewSession({ onBack }: { onBack: () => void }) {
   };
   const line = item.kind === "puzzle" ? lichessToLine(item.position) : drillToLine(item.position);
   const label = item.kind === "puzzle"
-    ? `Puzzle · rated ${item.position.rating}${item.topic ? ` · ${item.topic}` : ""}`
-    : `${item.position.book_title}, §${item.position.section_title} · Diagram ${item.position.fig.slice(3)}`;
+    ? `Puzzle rated ${item.position.rating}${item.topic ? `, from ${item.topic.replace(/-/g, " ")}` : ""}`
+    : `${item.position.book_title}, section ${item.position.section_title}, diagram ${item.position.fig.slice(3)}`;
 
   return (
     <div>
       {header}
-      <div className="mono dim" style={{ fontSize: 12, marginBottom: 12 }}>
-        {label}{last && results.length === i + 1 ? ` · ${nextDue(last)}` : ""}
+      <div className="row small muted" style={{ marginBottom: 14 }}>
+        <span>{label}</span>
+        {last && results.length === i + 1 && <span style={{ color: "var(--text)" }}>{nextDue(last)}</span>}
       </div>
       <SolveBoard
         key={`${item.kind}:${item.ref}`}

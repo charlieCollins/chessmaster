@@ -25,16 +25,12 @@ export default function GameIdBadge({ id, size = 12 }: { id: string | null | und
 
   return (
     <button
-      className="ghost"
+      className="tag accent mono"
       onClick={copy}
-      title={`Game ${id} — click to copy a link to it`}
-      style={{
-        fontFamily: "var(--font-mono)", fontSize: size, padding: "1px 6px",
-        color: copied ? "var(--good)" : "var(--gold)", letterSpacing: "0.06em",
-        border: "1px solid var(--border-hi)", borderRadius: 4, cursor: "copy",
-      }}
+      title={`Game ${id}: click to copy a link to it`}
+      style={{ fontSize: size, height: 26, cursor: "copy", color: copied ? "var(--good)" : undefined }}
     >
-      {copied ? "link copied" : id}
+      {copied ? "Link copied" : id}
     </button>
   );
 }

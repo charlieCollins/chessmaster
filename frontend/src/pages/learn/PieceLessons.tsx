@@ -1,6 +1,8 @@
 // frontend/src/pages/learn/PieceLessons.tsx
 import { GOLD, RED, BLUE, GREEN, KNIGHT, MiniBoard, TipCard, SectionLabel } from "./shared";
 import { sq } from "./boardUtils";
+import { PageHead } from "../../ui";
+import { BackLink } from "./TopicLesson";
 
 // ── Knights lesson ────────────────────────────────────────────────────────────
 
@@ -62,21 +64,18 @@ export function KnightsLesson({ onBack }: { onBack: () => void }) {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
+    <div className="stack lg">
 
       {/* header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-        <button className="ghost" onClick={onBack}>← Learn</button>
-        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, color: "var(--text-bright)" }}>
-          Knights
-        </h2>
-        <span className="mono dim" style={{ fontSize: 12 }}>♞ movement · tactics · escapes</span>
+      <div>
+        <BackLink onClick={onBack} label="Back to the topic" />
+        <PageHead title="Knights lesson cards" lead="Movement, tactics and escapes." />
       </div>
 
       {/* ── Section 1 ── */}
       <section>
         <SectionLabel>The Basics</SectionLabel>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="stack">
 
           <TipCard
             title="Rim is Dim — Center is King"
@@ -118,7 +117,7 @@ export function KnightsLesson({ onBack }: { onBack: () => void }) {
       {/* ── Section 2 ── */}
       <section>
         <SectionLabel>Attacking with Knights</SectionLabel>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="stack">
 
           <TipCard
             title="The Fork — Two Pieces, One Move"
@@ -172,7 +171,7 @@ export function KnightsLesson({ onBack }: { onBack: () => void }) {
       {/* ── Section 3 ── */}
       <section>
         <SectionLabel>Avoiding and Escaping Knights</SectionLabel>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="stack">
 
           <TipCard
             title="The 4-Move Diagonal Rule"
@@ -287,21 +286,18 @@ export function BishopsLesson({ onBack }: { onBack: () => void }) {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
+    <div className="stack lg">
 
       {/* header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-        <button className="ghost" onClick={onBack}>← Learn</button>
-        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, color: "var(--text-bright)" }}>
-          Bishops
-        </h2>
-        <span className="mono dim" style={{ fontSize: 12 }}>♝ diagonals · pair · color control</span>
+      <div>
+        <BackLink onClick={onBack} label="Back to the topic" />
+        <PageHead title="Bishops lesson cards" lead="Diagonals, pair and color control." />
       </div>
 
       {/* ── Section 1 ── */}
       <section>
         <SectionLabel>The Basics</SectionLabel>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="stack">
 
           <TipCard
             title="Good vs Bad Bishop"
@@ -352,7 +348,7 @@ export function BishopsLesson({ onBack }: { onBack: () => void }) {
       {/* ── Section 2 ── */}
       <section>
         <SectionLabel>Attacking with Bishops</SectionLabel>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="stack">
 
           <TipCard
             title="The Fianchetto — Dominating the Long Diagonal"
@@ -382,7 +378,7 @@ export function BishopsLesson({ onBack }: { onBack: () => void }) {
       {/* ── Section 3 ── */}
       <section>
         <SectionLabel>Defending Against Bishops</SectionLabel>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="stack">
 
           <TipCard
             title="Block the Long Diagonal"
@@ -488,21 +484,18 @@ export function RooksLesson({ onBack }: { onBack: () => void }) {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
+    <div className="stack lg">
 
       {/* header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-        <button className="ghost" onClick={onBack}>← Learn</button>
-        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, color: "var(--text-bright)" }}>
-          Rooks
-        </h2>
-        <span className="mono dim" style={{ fontSize: 12 }}>♜ open files · 7th rank · endgames</span>
+      <div>
+        <BackLink onClick={onBack} label="Back to the topic" />
+        <PageHead title="Rooks lesson cards" lead="Open files, 7th rank and endgames." />
       </div>
 
       {/* ── Section 1 ── */}
       <section>
         <SectionLabel>The Basics</SectionLabel>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="stack">
 
           <TipCard
             title="Rooks Need Open Files"
@@ -548,7 +541,7 @@ export function RooksLesson({ onBack }: { onBack: () => void }) {
       {/* ── Section 2 ── */}
       <section>
         <SectionLabel>Attacking with Rooks</SectionLabel>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="stack">
 
           <TipCard
             title="Rook Behind the Passed Pawn"
@@ -583,7 +576,7 @@ export function RooksLesson({ onBack }: { onBack: () => void }) {
       {/* ── Section 3 ── */}
       <section>
         <SectionLabel>Endgame Principles</SectionLabel>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="stack">
 
           <TipCard
             title="Cut Off the Enemy King"
@@ -685,21 +678,18 @@ export function PawnsLesson({ onBack }: { onBack: () => void }) {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
+    <div className="stack lg">
 
       {/* header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-        <button className="ghost" onClick={onBack}>← Learn</button>
-        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, color: "var(--text-bright)" }}>
-          Pawns
-        </h2>
-        <span className="mono dim" style={{ fontSize: 12 }}>♟ structure · breaks · endgames</span>
+      <div>
+        <BackLink onClick={onBack} label="Back to the topic" />
+        <PageHead title="Pawns lesson cards" lead="Structure, breaks and endgames." />
       </div>
 
       {/* ── Section 1 ── */}
       <section>
         <SectionLabel>Pawn Structure</SectionLabel>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="stack">
 
           <TipCard
             title="Connected vs Isolated Pawns"
@@ -755,7 +745,7 @@ export function PawnsLesson({ onBack }: { onBack: () => void }) {
       {/* ── Section 2 ── */}
       <section>
         <SectionLabel>Pawn Strategy</SectionLabel>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="stack">
 
           <TipCard
             title="Pawn Chains — Always Attack the Base"
@@ -785,7 +775,7 @@ export function PawnsLesson({ onBack }: { onBack: () => void }) {
       {/* ── Section 3 ── */}
       <section>
         <SectionLabel>Pawn Endgames</SectionLabel>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="stack">
 
           <TipCard
             title="The Outside Passed Pawn — A Decoy Weapon"
@@ -892,21 +882,18 @@ export function QueensLesson({ onBack }: { onBack: () => void }) {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
+    <div className="stack lg">
 
       {/* header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-        <button className="ghost" onClick={onBack}>← Learn</button>
-        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, color: "var(--text-bright)" }}>
-          Queens
-        </h2>
-        <span className="mono dim" style={{ fontSize: 12 }}>♛ tactics · mating patterns · perpetual</span>
+      <div>
+        <BackLink onClick={onBack} label="Back to the topic" />
+        <PageHead title="Queens lesson cards" lead="Tactics, mating patterns and perpetual." />
       </div>
 
       {/* ── Section 1 ── */}
       <section>
         <SectionLabel>Understanding the Queen</SectionLabel>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="stack">
 
           <TipCard
             title="Central Power — 27 Squares vs 21"
@@ -946,7 +933,7 @@ export function QueensLesson({ onBack }: { onBack: () => void }) {
       {/* ── Section 2 ── */}
       <section>
         <SectionLabel>Queen Tactics</SectionLabel>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="stack">
 
           <TipCard
             title="The Fork — Long-Range Double Attack"
@@ -987,7 +974,7 @@ export function QueensLesson({ onBack }: { onBack: () => void }) {
       {/* ── Section 3 ── */}
       <section>
         <SectionLabel>Mating Patterns and Drawing Resources</SectionLabel>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="stack">
 
           <TipCard
             title="Queen + Rook — The Cage Mate"
@@ -1099,21 +1086,18 @@ export function KingsLesson({ onBack }: { onBack: () => void }) {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
+    <div className="stack lg">
 
       {/* header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-        <button className="ghost" onClick={onBack}>← Learn</button>
-        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, color: "var(--text-bright)" }}>
-          Kings
-        </h2>
-        <span className="mono dim" style={{ fontSize: 12 }}>♚ safety · opposition · endgame</span>
+      <div>
+        <BackLink onClick={onBack} label="Back to the topic" />
+        <PageHead title="Kings lesson cards" lead="Safety, opposition and endgame." />
       </div>
 
       {/* ── Section 1 ── */}
       <section>
         <SectionLabel>Keeping the King Safe</SectionLabel>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="stack">
 
           <TipCard
             title="Castle Early"
@@ -1153,7 +1137,7 @@ export function KingsLesson({ onBack }: { onBack: () => void }) {
       {/* ── Section 2 ── */}
       <section>
         <SectionLabel>Activating the King in the Endgame</SectionLabel>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="stack">
 
           <TipCard
             title="Centralize the King"
@@ -1188,7 +1172,7 @@ export function KingsLesson({ onBack }: { onBack: () => void }) {
       {/* ── Section 3 ── */}
       <section>
         <SectionLabel>King and Pawn Technique</SectionLabel>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="stack">
 
           <TipCard
             title="King in Front of the Pawn"
