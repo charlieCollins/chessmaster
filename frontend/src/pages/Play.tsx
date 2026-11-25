@@ -5,6 +5,7 @@ import { Chess, type Square } from "chess.js";
 import { API, HINT_DISPLAY_MS, REPLY_DISPLAY_MS, EVAL_DISPLAY_MS, ENGINE_MOVE_MIN_MS } from "../config";
 import { useBoardTheme } from "../themes";
 import { type Quality, QUALITIES, classifyMove, qualityTint } from "../classify";
+import { Field, Panel, QualityLegend, Segmented } from "../ui";
 import { type EngineKind, opponentLabel, encodeOpponent, decodeOpponent } from "../opponents";
 import { formatEval, describeEval, describeMoveDelta } from "../evalText";
 import { type AccuracySummary, describeResult, grade, estimateElo } from "../ratings";
@@ -106,9 +107,27 @@ function engineModeTag(elo: number): string {
   return "UCI ELO";
 }
 
-/** Desktop: one side panel next to the board. */
-const PANEL_W = 300;
-const PANEL_GAP = 28;
+type ColorChoice = "white" | "black" | "random";
+const SETUP_KEY = "playSetup";
+
+/** Last opponent/colour picked on this device (a convenience; may be unavailable). */
+function loadSetup(): { opponent: string; color: ColorChoice } | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(SETUP_KEY) ?? "null");
+    if (v && typeof v.opponent === "string" && ["white", "black", "random"].includes(v.color)) return v;
+  } catch { /* storage blocked or bad JSON */ }
+  return null;
+}
+function saveSetup(v: { opponent: string; color: ColorChoice }) {
+  try { localStorage.setItem(SETUP_KEY, JSON.stringify(v)); } catch { /* storage blocked */ }
+}
+
+const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+
+/** Desktop: one side panel next to the board (the board frame adds 12px). */
+const PANEL_W = 340;
+const PANEL_GAP = 32;
+const FRAME = 12;
 
 export default function Play({ onGameEnd, onGameActive }: PlayProps) {
   const boardTheme = useBoardTheme();
@@ -122,11 +141,12 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
   const [replyLoading, setReplyLoading]       = useState(false);
   const [autoEval, setAutoEval]       = useState(true);
   const autoEvalRef                   = useRef(true);
-  const [colorChoice, setColorChoice] = useState<"white" | "black">("white");
-  // Opponent picker value, e.g. "maia:1300" / "stockfish:1000"
-  const [opponentChoice, setOpponentChoice] = useState(encodeOpponent("stockfish", 1000));
+  const remembered = useRef(loadSetup());
+  const [colorChoice, setColorChoice] = useState<ColorChoice>(remembered.current?.color ?? "white");
+  // Opponent value, e.g. "maia:1300" / "stockfish:1000"
+  const [opponentChoice, setOpponentChoice] = useState(remembered.current?.opponent ?? encodeOpponent("stockfish", 1000));
   const [maiaLevels, setMaiaLevels] = useState<number[]>([]);   // empty = Maia not available
-  const opponentTouched = useRef(false);
+  const opponentTouched = useRef(remembered.current !== null);
 
   // Offer Maia (human-like) opponents when the server has them; default to Maia 1300.
   useEffect(() => {
@@ -134,7 +154,11 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
     fetch(`${API}/api/engines`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (cancelled || !data?.maia?.available) return;
+        if (cancelled) return;
+        if (!data?.maia?.available) {   // a remembered Maia choice can't be played here
+          setOpponentChoice(c => decodeOpponent(c).engine === "maia" ? encodeOpponent("stockfish", 1000) : c);
+          return;
+        }
         setMaiaLevels(data.maia.levels);
         if (!opponentTouched.current && data.maia.levels.includes(1300)) {
           setOpponentChoice(encodeOpponent("maia", 1300));
@@ -254,13 +278,15 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
   // FIX 6: error handling in startGame
   async function startGame() {
     const chosen = decodeOpponent(opponentChoice);
+    const color: "white" | "black" = colorChoice === "random" ? (Math.random() < 0.5 ? "white" : "black") : colorChoice;
+    saveSetup({ opponent: opponentChoice, color: colorChoice });
     setLoading(true);
     setStartError(null);
     try {
       const res = await fetch(`${API}/api/game`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ player_color: colorChoice, engine: chosen.engine, engine_elo: chosen.elo }),
+        body: JSON.stringify({ player_color: color, engine: chosen.engine, engine_elo: chosen.elo }),
       });
       if (!res.ok) throw new Error("Server error");
       const data = await res.json();
@@ -268,7 +294,7 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
         gameId: data.game_id,
         publicId: data.public_id ?? null,
         fen: data.fen,
-        playerColor: colorChoice,
+        playerColor: color,
         engine: chosen.engine,
         engineElo: chosen.elo,
         gameOver: false,
@@ -624,110 +650,81 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
   }
 
 
-  const labelStyle: React.CSSProperties = {
-    fontSize: 12,
-    fontWeight: 600,
-    fontFamily: "var(--font-ui)",
-    letterSpacing: "0.08em",
-    textTransform: "uppercase",
-    color: "var(--text-dim)",
-    marginBottom: 2,
-  };
-
   // ── Setup screen ─────────────────────────────────────────
   if (!state) {
-    const cardStyle: React.CSSProperties = {
-      padding: "16px 18px",
-      background: "var(--surface)",
-      border: "1px solid var(--border)",
-      borderRadius: "var(--radius)",
-      display: "flex",
-      flexDirection: "column",
-      gap: 10,
+    const chosen = decodeOpponent(opponentChoice);
+    const maiaOn = maiaLevels.length > 0;
+    const pick = (engine: EngineKind, elo: number) => { opponentTouched.current = true; setOpponentChoice(encodeOpponent(engine, elo)); };
+    const switchEngine = (engine: EngineKind) => {
+      if (engine === chosen.engine) return;
+      if (engine === "maia") pick("maia", maiaLevels.includes(1300) ? 1300 : maiaLevels[0]);
+      else pick("stockfish", 1000);
     };
+    const strengthOptions = chosen.engine === "maia"
+      ? maiaLevels.map(lv => ({ value: lv, label: String(lv) }))
+      : ELO_OPTIONS.map(o => ({ value: o.value, label: o.label, title: o.mode === "skill" ? `Skill level ${o.skill} of 20` : "Stockfish UCI_Elo" }));
+    const opt = ELO_OPTIONS.find(o => o.value === chosen.elo);
+    const strengthHint = chosen.engine === "maia"
+      ? "Lichess rating it was trained on. Maia makes the mistakes people at that level make."
+      : opt?.mode === "skill"
+      ? `Skill level ${opt.skill} of 20. Below 1320 the rating is a rough guess, and Stockfish rarely hangs pieces.`
+      : "Stockfish's own rating scale. It plays a little weaker than that at our fast move times.";
+    const previewSize = narrow ? 0 : Math.min(boardSize, 560);
+
+    const form = (
+      <div className="stack lg" style={{ width: narrow ? "100%" : 380, flexShrink: 0 }}>
+        <div>
+          <h1>New game</h1>
+          <p className="lead muted" style={{ marginTop: 6 }}>Choose who you play and which side you take.</p>
+        </div>
+
+        <Field label="Opponent">
+          <Segmented<EngineKind>
+            label="Opponent" block value={chosen.engine} onChange={switchEngine}
+            options={[
+              { value: "maia", label: "Maia", sub: maiaOn ? "Plays like a person" : "Not installed here", disabled: !maiaOn },
+              { value: "stockfish", label: "Stockfish", sub: "Engine, set to a level" },
+            ]}
+          />
+        </Field>
+
+        <Field label="Strength" hint={strengthHint}>
+          <Segmented<number> label="Strength" value={chosen.elo} onChange={elo => pick(chosen.engine, elo)} options={strengthOptions} />
+        </Field>
+
+        <Field label="You play">
+          <Segmented<ColorChoice>
+            label="Your colour" block value={colorChoice} onChange={setColorChoice}
+            options={[
+              { value: "white", label: "♔ White" },
+              { value: "black", label: "♚ Black" },
+              { value: "random", label: "Random" },
+            ]}
+          />
+        </Field>
+
+        <div className="stack sm">
+          <button className="primary lg block" onClick={startGame} disabled={loading}>
+            {loading ? "Starting…" : `Play ${opponentLabel(chosen.engine, chosen.elo)}`}
+          </button>
+          {startError && <p className="error" role="alert">{startError}</p>}
+        </div>
+      </div>
+    );
+
+    if (narrow) return form;
     return (
-      <div style={{ maxWidth: narrow ? 480 : 300, display: "flex", flexDirection: "column", gap: 12 }}>
-
-        <div style={cardStyle}>
-          <div style={labelStyle}>Play as</div>
-          <div style={{ display: "flex", gap: 8 }}>
-            {(["white", "black"] as const).map((c) => (
-              <button
-                key={c}
-                onClick={() => setColorChoice(c)}
-                style={{
-                  flex: 1,
-                  background: colorChoice === c ? "var(--gold)" : "var(--raised)",
-                  borderColor: colorChoice === c ? "var(--gold)" : "var(--border-hi)",
-                  color: colorChoice === c ? "#0e0f13" : "var(--text)",
-                  fontWeight: colorChoice === c ? 600 : 400,
-                }}
-              >
-                {c === "white" ? "♔ White" : "♚ Black"}
-              </button>
-            ))}
-          </div>
+      <div style={{ display: "flex", gap: 48, alignItems: "flex-start", justifyContent: "center" }}>
+        <div className="board-frame" aria-hidden>
+          <Chessboard options={{
+            position: START_FEN, allowDragging: false,
+            boardOrientation: colorChoice === "black" ? "black" : "white",
+            boardStyle: { width: previewSize, height: previewSize, borderRadius: 4 },
+            darkSquareStyle: { backgroundColor: boardTheme.dark },
+            lightSquareStyle: { backgroundColor: boardTheme.light },
+          }} />
         </div>
-
-        <div style={cardStyle}>
-          <div style={labelStyle}>Opponent</div>
-          <select
-            value={opponentChoice}
-            onChange={(e) => { opponentTouched.current = true; setOpponentChoice(e.target.value); }}
-            style={{
-              width: "100%",
-              background: "var(--raised)",
-              border: "1px solid var(--border-hi)",
-              color: "var(--text)",
-              borderRadius: "var(--radius)",
-              padding: narrow ? "10px 12px" : "7px 10px",
-              fontFamily: "var(--font-ui)",
-              fontSize: narrow ? 16 : 13,
-              cursor: "pointer",
-            }}
-          >
-            {maiaLevels.length > 0 && (
-              <optgroup label="Human-like (Maia)">
-                {maiaLevels.map(lv => (
-                  <option key={`maia-${lv}`} value={encodeOpponent("maia", lv)}>Maia {lv}</option>
-                ))}
-              </optgroup>
-            )}
-            <optgroup label="Stockfish · Skill Level (approximate)">
-              {ELO_OPTIONS.filter(o => o.mode === "skill").map(o => (
-                <option key={o.value} value={encodeOpponent("stockfish", o.value)}>Stockfish {o.label} — Skill {o.skill}/20</option>
-              ))}
-            </optgroup>
-            <optgroup label="Stockfish · UCI ELO">
-              {ELO_OPTIONS.filter(o => o.mode === "uci").map(o => (
-                <option key={o.value} value={encodeOpponent("stockfish", o.value)}>Stockfish {o.label}</option>
-              ))}
-            </optgroup>
-          </select>
-          {(() => {
-            const chosen = decodeOpponent(opponentChoice);
-            const opt = ELO_OPTIONS.find(o => o.value === chosen.elo);
-            return (
-              <div style={{ ...labelStyle, marginBottom: 0, letterSpacing: "0.04em" }}>
-                {chosen.engine === "maia"
-                  ? "trained on human games · plays human-style mistakes"
-                  : opt?.mode === "skill"
-                  ? `Skill ${opt.skill}/20 · randomized, not calibrated`
-                  : "Stockfish UCI_Elo · rating is approximate at fast move times"}
-              </div>
-            );
-          })()}
-        </div>
-
-        {startError && (
-          <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--loss)" }}>
-            {startError}
-          </div>
-        )}
-
-        <button className={`primary${narrow ? " tall" : ""}`} onClick={startGame} disabled={loading} style={{ width: "100%", padding: "9px 0" }}>
-          {loading ? "Starting…" : "Start Game"}
-        </button>
+        {form}
       </div>
     );
   }
@@ -740,17 +737,6 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
     ? describeMoveDelta(pov * state.lastMoveEvals.before, pov * state.lastMoveEvals.after)
     : null;
 
-  // Phones get larger type everywhere (desktop sizes unchanged)
-  const small = 13;
-  const body = narrow ? 15 : 14;
-  const label = labelStyle;
-  const card: React.CSSProperties = {
-    padding: "12px 14px", background: "var(--surface)", borderRadius: "var(--radius)", border: "1px solid var(--border)",
-  };
-  const errorText = (text: string) => (
-    <div style={{ fontFamily: "var(--font-mono)", fontSize: small + 1, color: "var(--loss)", marginTop: 4 }}>{text}</div>
-  );
-
   const baseHighlights = {
     ...(hintMove         ? qualitySquares(hintMove.from_sq,          hintMove.to_sq,          "best") : {}),
     ...(replyMove        ? qualitySquares(replyMove.from_sq,         replyMove.to_sq,         "best") : {}),
@@ -760,177 +746,152 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
   };
   const selectedText = selectedSquare ? selectedLabel(state.fen, selectedSquare) : null;
 
-  // One line: opponent, your colour, game id
+  // Who you're playing, your colour, the game id
   const gameInfoStrip = (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-      <div style={{ fontSize: 15, color: "var(--text-bright)" }}>
-        vs <b style={{ fontWeight: 600 }}>{opponentLabel(state.engine, state.engineElo)}</b>
-        <span style={{ color: "var(--text-dim)", fontSize: 13 }}>
-          {state.engine === "stockfish" ? ` (${engineModeTag(state.engineElo)})` : ""}
-          {" "}· you play {state.playerColor}{state.assisted ? " · assisted" : ""}
-        </span>
+    <div className="row between">
+      <div className="row" style={{ gap: 8 }}>
+        <h2 style={{ fontSize: 22 }}>{opponentLabel(state.engine, state.engineElo)}</h2>
+        {state.engine === "stockfish" && <span className="tag">{engineModeTag(state.engineElo)}</span>}
       </div>
       <GameIdBadge id={state.publicId} />
     </div>
   );
+  const gameTags = (
+    <div className="row" style={{ gap: 6 }}>
+      <span className="tag">You play {state.playerColor}</span>
+      {state.assisted && <span className="tag accent" title="You used a hint or a take-back in this game">Assisted</span>}
+    </div>
+  );
 
   const evalCard = evalPos !== null && (
-    <div style={card}>
-      <div style={label}>Position</div>
-      <div
-        title="Engine evaluation from your side. +1.00 ≈ the value of one pawn — the advantage can come from material, activity, king safety, etc. M = forced mate in N moves."
-        style={{ fontFamily: "var(--font-mono)", fontSize: narrow ? 22 : 18, color: evalPos >= 0 ? "var(--win)" : "var(--loss)", fontWeight: 500, cursor: "help" }}
-      >
-        {formatEval(evalPos)}
+    <Panel tight>
+      <div className="row between" style={{ alignItems: "baseline" }}>
+        <span className="small muted">Position</span>
+        <span
+          title="Engine evaluation from your side. +1.00 ≈ one pawn's worth of advantage, from material, activity, king safety and so on. M = forced mate in N moves."
+          className="mono"
+          style={{ fontSize: 22, fontWeight: 500, color: evalPos >= 0 ? "var(--win)" : "var(--loss)", cursor: "help" }}
+        >
+          {formatEval(evalPos)}
+        </span>
       </div>
       {(() => {
         const clamped = Math.max(-500, Math.min(500, evalPos));
-        const whitePct = Math.round(50 + (clamped / 500) * 30);
+        const pct = Math.round(50 + (clamped / 500) * 30);
         return (
-          <div style={{ height: 8, borderRadius: 4, background: "var(--border)", overflow: "hidden", marginTop: 6 }}>
-            <div style={{ height: "100%", width: `${whitePct}%`, background: "var(--text-bright)", borderRadius: 4, transition: "width 0.3s ease" }} />
+          <div style={{ height: 8, borderRadius: 4, background: "var(--sunken)", overflow: "hidden", margin: "8px 0 6px" }}>
+            <div style={{ height: "100%", width: `${pct}%`, background: "var(--text-strong)", borderRadius: 4, transition: "width 0.3s ease" }} />
           </div>
         );
       })()}
-      <div style={{ fontSize: small, color: "var(--text-dim)", marginTop: 4 }}>
-        {describeEval(evalPos)}
-      </div>
-      {lastMoveText !== null && (() => {
-        const tone = lastMoveText.startsWith("▲") ? "var(--good)" : lastMoveText.startsWith("▼") ? "var(--loss)" : "var(--text-dim)";
-        return (
-          <>
-            <div style={{ ...label, marginTop: 10 }}>Last move</div>
-            <span
-              title="How much the evaluation changed because of your move alone"
-              style={{ color: tone, fontSize: small, cursor: "help" }}
-            >
-              {lastMoveText}
-            </span>
-          </>
-        );
-      })()}
-    </div>
+      <div className="small muted">{describeEval(evalPos)}</div>
+      {lastMoveText !== null && (
+        <div className="small" style={{ marginTop: 8 }} title="How much the evaluation changed because of your move alone">
+          <span className="muted">Your last move: </span>
+          <span style={{ color: lastMoveText.startsWith("▲") ? "var(--good)" : lastMoveText.startsWith("▼") ? "var(--loss)" : "var(--text-muted)" }}>
+            {lastMoveText}
+          </span>
+        </div>
+      )}
+    </Panel>
   );
 
-  const gameOverCard = state.gameOver && (
-    <div style={card}>
-      {(() => {
-        const { headline, detail } = describeResult(state.result, state.termination, state.playerColor);
-        const tone = headline === "You won" ? "var(--win)" : headline === "You lost" ? "var(--loss)" : "var(--draw)";
-        return (
-          <>
-            <div style={label}>Game over</div>
-            <div style={{ fontFamily: "var(--font-display)", fontSize: narrow ? 26 : 20, color: tone, lineHeight: 1.1 }}>{headline}</div>
-            <div style={{ fontSize: body, color: "var(--text)", marginTop: 4 }}>{detail}</div>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: small, color: "var(--text-dim)", marginTop: 2 }}>{state.result}</div>
-          </>
-        );
-      })()}
-
-      <div style={{ borderTop: "1px solid var(--border)", marginTop: 10, paddingTop: 10,
-        display: narrow ? "flex" : "block", gap: 24 }}>
-        {postGame?.status === "analyzing" && (
-          <div style={{ fontFamily: "var(--font-mono)", fontSize: small, color: "var(--text-dim)" }}>Analyzing…</div>
-        )}
-        {postGame?.status === "error" && (
-          <div style={{ fontFamily: "var(--font-mono)", fontSize: small, color: "var(--loss)" }}>Analysis unavailable</div>
-        )}
-        {postGame?.status === "done" && !postGame.you && (
-          <div style={{ fontFamily: "var(--font-mono)", fontSize: small, color: "var(--text-dim)" }}>No moves to rate</div>
-        )}
-        {postGame?.status === "done" && ([["You", postGame.you], ["Opponent", postGame.opp]] as const).map(([who, acc]) => {
-          if (!acc) return null;
-          const pct = Math.round(acc.pct);
-          const { label: gradeLabel, color } = grade(pct);
-          return (
-            <div key={who} style={{ marginBottom: 8 }}>
-              <div style={{ ...label, color: who === "You" ? "var(--gold)" : "var(--text-dim)" }}>{who}</div>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                <span style={{ fontFamily: "var(--font-display)", fontSize: narrow ? 24 : 20, color, lineHeight: 1 }}>{pct}%</span>
-                <span style={{ fontFamily: "var(--font-display)", fontSize: narrow ? 18 : 15, color: "var(--gold)" }} title="Rough estimate from accuracy, not a rating">~{estimateElo(pct)}</span>
-              </div>
-              <div style={{ fontSize: small, color, fontWeight: 600 }}>{gradeLabel}</div>
+  const gameOverCard = state.gameOver && (() => {
+    const { headline, detail } = describeResult(state.result, state.termination, state.playerColor);
+    const tone = headline === "You won" ? "var(--win)" : headline === "You lost" ? "var(--loss)" : "var(--draw)";
+    return (
+      <Panel>
+        <h2 style={{ color: tone, fontSize: narrow ? 30 : 28 }}>{headline}</h2>
+        <p style={{ marginTop: 4 }}>{detail} <span className="mono muted small">{state.result}</span></p>
+        <div style={{ borderTop: "1px solid var(--line)", marginTop: 14, paddingTop: 14 }}>
+          {postGame?.status === "analyzing" && <p className="small muted">Checking every move…</p>}
+          {postGame?.status === "error" && <p className="error">Analysis isn't available right now. Try again from Review.</p>}
+          {postGame?.status === "done" && !postGame.you && <p className="small muted">No moves to rate.</p>}
+          {postGame?.status === "done" && postGame.you && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              {([["Your accuracy", postGame.you], ["Opponent", postGame.opp]] as const).map(([who, acc]) => {
+                if (!acc) return null;
+                const pct = Math.round(acc.pct);
+                const { label: gradeLabel, color } = grade(pct);
+                return (
+                  <div key={who}>
+                    <div className="small muted">{who}</div>
+                    <div className="row" style={{ gap: 8, alignItems: "baseline" }}>
+                      <span style={{ fontFamily: "var(--font-display)", fontSize: 30, fontWeight: 600, color, lineHeight: 1.1 }}>{pct}%</span>
+                      <span className="small muted" title="A rough estimate from accuracy, not a rating">≈{estimateElo(pct)}</span>
+                    </div>
+                    <div className="small" style={{ color, fontWeight: 500 }}>{gradeLabel}</div>
+                  </div>
+                );
+              })}
             </div>
-          );
-        })}
-      </div>
-    </div>
-  );
+          )}
+        </div>
+      </Panel>
+    );
+  })();
 
   const analysisButtons: [string, () => void, boolean, boolean, boolean, string][] = [
     // label, onClick, busy, disabled, error, title
-    ["Show Best Next", requestHint, hintLoading, hintLoading || loading || state.gameOver, hintError,
-      "Full-strength Stockfish best next move (marks game as assisted)"],
-    ["Show Best Last", requestShowBestLast, showBestLastLoading, showBestLastLoading || !prevFen, showBestLastError,
-      "Show the best move from your last position (not assisted)"],
-    ["Eval Last Move", requestPrevBest, prevBestLoading, prevBestLoading || !prevFen, prevBestError,
-      "Classify your last move by eval loss"],
-    ["Show Best Last Reply", requestReply, replyLoading, replyLoading || !replyFen, replyError,
-      "Best opponent move in response to your last move"],
+    ["Hint: best move", requestHint, hintLoading, hintLoading || loading || state.gameOver, hintError,
+      "Full-strength Stockfish's best move here. Marks the game as assisted."],
+    ["Best instead of mine", requestShowBestLast, showBestLastLoading, showBestLastLoading || !prevFen, showBestLastError,
+      "What you should have played last move (doesn't count as assisted)"],
+    ["Rate my last move", requestPrevBest, prevBestLoading, prevBestLoading || !prevFen, prevBestError,
+      "Colour your last move by how much it gave away"],
+    ["Their best reply", requestReply, replyLoading, replyLoading || !replyFen, replyError,
+      "The strongest answer to your last move"],
   ];
 
   const analysisSection = (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ ...label, marginBottom: 0 }}>Analysis</div>
-        <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", padding: narrow ? "6px 0" : 0 }}
-          title="Auto-evaluate every move for both players">
-          <input type="checkbox" checked={autoEval} onChange={e => setAutoEval(e.target.checked)}
-            style={{ cursor: "pointer", width: narrow ? 20 : undefined, height: narrow ? 20 : undefined }} />
-          <span style={{ fontSize: narrow ? 14 : 13, color: "var(--text-dim)" }}>auto-eval</span>
-        </label>
-      </div>
-
+    <Panel tight title="Help" aside={
+      <label className="row small muted" style={{ gap: 8, cursor: "pointer" }} title="Colour every move, yours and the opponent's, by quality">
+        <input type="checkbox" checked={autoEval} onChange={e => setAutoEval(e.target.checked)}
+          style={{ width: 18, height: 18, accentColor: "var(--accent)", cursor: "pointer" }} />
+        Rate every move
+      </label>
+    }>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
         {analysisButtons.map(([text, onClick, busy, disabled, error, title]) => (
           <div key={text}>
-            <button className="tall" style={{ width: "100%", height: "100%" }} onClick={onClick} disabled={disabled} title={title}>
+            <button className="wrap block sm" style={{ height: "100%" }} onClick={onClick} disabled={disabled} title={title}>
               {busy ? "Thinking…" : text}
             </button>
-            {error && errorText("unavailable")}
+            {error && <div className="error xsmall" style={{ marginTop: 4 }}>Not available</div>}
           </div>
         ))}
       </div>
-
-    </div>
-  );
-
-  const legend = (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px" }}>
-      {QUALITIES.map((q) => (
-        <div key={q} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <div style={{ width: 12, height: 12, borderRadius: 2, flexShrink: 0, background: qualityTint(q, 75), boxShadow: `0 0 0 1.5px ${qualityTint(q, 90)}` }} />
-          <span style={{ fontSize: 13, color: "var(--text-dim)", textTransform: "capitalize" }}>{q}</span>
-        </div>
-      ))}
-    </div>
+      <div style={{ marginTop: 12 }}><QualityLegend qualities={QUALITIES} /></div>
+    </Panel>
   );
 
   const controls = state.gameOver ? (
-    <>
-      <button className="primary tall" style={{ flex: 1 }} onClick={() => onGameEnd(state!.gameId)}>Review Game</button>
-      <button className="tall" style={{ flex: 1 }} onClick={() => setState(null)}>New Game</button>
-    </>
+    <div className="btn-row">
+      <button className="primary lg" onClick={() => onGameEnd(state!.gameId)}>Review game</button>
+      <button className="lg" onClick={() => setState(null)}>New game</button>
+    </div>
   ) : (
-    <>
-      <button className="tall" style={{ flex: 1 }} onClick={takeback}
-        disabled={loading || takebackLoading || !prevFen} title="Undo your last move and the engine's reply (counts as assisted)">
-        {takebackLoading ? "Taking back…" : "Take Back"}
+    <div className="btn-row">
+      <button onClick={takeback} disabled={loading || takebackLoading || !prevFen}
+        title="Undo your last move and the opponent's reply (marks the game as assisted)">
+        {takebackLoading ? "Taking back…" : "Take back"}
       </button>
-      <button className="tall" style={{ flex: 1 }} onClick={resign} disabled={loading}>Resign</button>
-      <button className="danger-ghost" style={{ flex: "0 0 auto" }} onClick={abort} disabled={loading}>Abort</button>
-    </>
+      <button onClick={resign} disabled={loading}>Resign</button>
+      <button className="danger" style={{ flex: "0 0 auto" }} onClick={abort} disabled={loading}
+        title="Delete this game without saving it">Abandon</button>
+    </div>
   );
 
+  const shownBoard = boardSize - FRAME;
   const board = (
-    <div style={{ flexShrink: 0, position: "relative", alignSelf: narrow ? "center" : undefined }}>
+    <div className="board-frame" style={{ alignSelf: narrow ? "center" : undefined }}>
       <Chessboard
         options={{
           position: state.fen,
           onPieceDrop: onDrop,
           onSquareClick: onSquareClick,
           boardOrientation: state.playerColor,
-          boardStyle: { width: boardSize, height: boardSize, borderRadius: "var(--radius)" },
+          boardStyle: { width: shownBoard, height: shownBoard, borderRadius: 4 },
           darkSquareStyle: { backgroundColor: boardTheme.dark },
           lightSquareStyle: { backgroundColor: boardTheme.light },
           squareStyles: layerStyles(baseHighlights, selectionStyles(state.fen, selectedSquare)),
@@ -941,30 +902,22 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
 
       {pendingPromotion && (
         <div style={{
-          position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
-          background: "rgba(0,0,0,0.7)", display: "flex",
-          alignItems: "center", justifyContent: "center", zIndex: 100,
-          borderRadius: "var(--radius)",
+          position: "absolute", inset: 0, background: "rgba(5, 10, 8, 0.72)", display: "flex",
+          alignItems: "center", justifyContent: "center", zIndex: 100, borderRadius: 10,
         }}>
-          <div style={{
-            background: "var(--surface)", border: "1px solid var(--border-hi)",
-            borderRadius: "var(--radius-lg)", padding: "20px 24px",
-            display: "flex", flexDirection: "column", gap: 12, alignItems: "center",
-          }}>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-dim)", letterSpacing: "0.1em" }}>PROMOTE TO</div>
+          <div className="panel stack" style={{ alignItems: "center" }} role="dialog" aria-label="Promote to">
+            <h3>Promote to</h3>
             <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr 1fr" : "repeat(4, auto)", gap: 8 }}>
-              {([["q","♛ Queen"],["r","♜ Rook"],["b","♝ Bishop"],["n","♞ Knight"]] as const).map(([piece, text], i) => (
-                <button key={piece} className={`primary${narrow ? " tall" : ""}`} autoFocus={i === 0} onClick={() => {
+              {([["q", "♛ Queen"], ["r", "♜ Rook"], ["b", "♝ Bishop"], ["n", "♞ Knight"]] as const).map(([piece, text], i) => (
+                <button key={piece} className={i === 0 ? "primary" : undefined} autoFocus={i === 0} onClick={() => {
                   makeMove(pendingPromotion.from + pendingPromotion.to + piece);
                   setPendingPromotion(null);
-                }} style={{ padding: "8px 16px", fontSize: narrow ? 16 : 13 }}>
+                }}>
                   {text}
                 </button>
               ))}
             </div>
-            <button className="ghost" style={{ fontSize: narrow ? 14 : 11 }} onClick={() => setPendingPromotion(null)}>
-              Cancel
-            </button>
+            <button className="quiet sm" onClick={() => setPendingPromotion(null)}>Cancel</button>
           </div>
         </div>
       )}
@@ -979,37 +932,36 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
     : state.gameOver
     ? null
     : selectedText
-    ? { text: `${selectedText} — ${tapWord} a dot to move it`, color: "var(--gold)" }
-    : { text: `Your move — ${tapWord} a piece, or drag it`, color: "var(--text-dim)" };
+    ? { text: `${selectedText}: ${tapWord} a dot to move it`, color: "var(--accent)" }
+    : { text: `Your move. ${tapWord[0].toUpperCase() + tapWord.slice(1)} a piece or drag it.`, color: "var(--text-muted)" };
   const statusLine = status && (
-    <div aria-live="polite" style={{ minHeight: 24, fontSize: 15, fontWeight: 500, color: status.color, textAlign: narrow ? "center" : "left" }}>
+    <div aria-live="polite" style={{ minHeight: 26, fontSize: 16, fontWeight: 500, color: status.color, textAlign: narrow ? "center" : "left" }}>
       {"thinking" in status && thinkingSince !== null ? <ThinkingIndicator since={thinkingSince} /> : status.text}
     </div>
   );
 
-  // ── Phone layout: info line, board, status, controls, then analysis ──
+  // ── Phone layout: info line, board, status, controls, then help ──
   if (narrow) {
     // Game over: the result and what to do next go ABOVE the board, where you're already looking
     if (state.gameOver) return (
-      <div ref={resultTopRef} style={{ display: "flex", flexDirection: "column", gap: 12, scrollMarginTop: 12 }}>
+      <div ref={resultTopRef} className="stack" style={{ gap: 12, scrollMarginTop: 12 }}>
         {gameOverCard}
-        <div style={{ display: "flex", gap: 8 }}>{controls}</div>
+        {controls}
         {board}
         {gameInfoStrip}
         {evalCard}
         {analysisSection}
-        {legend}
       </div>
     );
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div className="stack" style={{ gap: 12 }}>
         {gameInfoStrip}
         {board}
         {statusLine}
-        <div style={{ display: "flex", gap: 8 }}>{controls}</div>
+        {controls}
         {evalCard}
         {analysisSection}
-        {legend}
+        {gameTags}
       </div>
     );
   }
@@ -1018,17 +970,17 @@ export default function Play({ onGameEnd, onGameActive }: PlayProps) {
   return (
     <div style={{ display: "flex", gap: PANEL_GAP, alignItems: "flex-start", justifyContent: "center" }}>
       {board}
-      <div style={{ width: PANEL_W, flexShrink: 0, minHeight: boardSize, display: "flex", flexDirection: "column", gap: 16 }}>
-        {gameInfoStrip}
+      <div className="stack" style={{ width: PANEL_W, flexShrink: 0, minHeight: boardSize, gap: 14 }}>
+        <div className="stack sm">
+          {gameInfoStrip}
+          {gameTags}
+        </div>
         {gameOverCard}
         {statusLine}
         {evalCard}
         {analysisSection}
-        {legend}
         {/* Game controls pinned to the bottom edge of the board */}
-        <div style={{ display: "flex", gap: 8, marginTop: "auto", paddingTop: 14, borderTop: "1px solid var(--border)" }}>
-          {controls}
-        </div>
+        <div style={{ marginTop: "auto" }}>{controls}</div>
       </div>
     </div>
   );

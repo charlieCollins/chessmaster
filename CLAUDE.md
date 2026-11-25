@@ -79,7 +79,9 @@ to `CHESS_OWNER`. Links: `/?id=<public_id>` opens that game's Review (`frontend/
 - `backend/analysis.py` — Post-game analysis: iterates all moves, classifies each with full-strength Stockfish
 - `backend/config.py` — App configuration: timing constants (ENGINE_MOVE_TIME, HINT_TIME, ANALYSIS_TIME, LIVE_EVAL_TIME), DEFAULT_ENGINE_ELO, CORS_ORIGINS
 - `frontend/src/App.tsx` — Routing shell (Home / Play / Learn / Review pages)
-- `frontend/src/themes.ts` — Theme definitions: Classic, Forest, Ocean, Night, Autumn, Obsidian; maps theme names to CSS variable overrides
+- `frontend/src/index.css` — the design system: tokens (felt green / ivory / brass; IBM Plex Sans, Sans Condensed, Serif for book text, Mono for notation) and the shared classes (`button` + `.primary/.quiet/.danger`, `.sm/.lg`, `.seg`, `.panel`, `.page-head`, `.section-head`, `.stat`, `.tag`, `.data-table`, `.move-table`, `.board-frame`, `.topic-card`, `.tabs`). Sentence case everywhere, no all-caps labels.
+- `frontend/src/ui.tsx` — shared components every page uses: `PageHead`, `SectionHead`, `Panel`, `Segmented` (radio-group choice), `Field`, `Stat`, `QualityDot`/`QualityLegend`, `Meter`, `StepIcon`
+- `frontend/src/themes.ts` — board colour themes (Walnut, Tournament, Slate, Mahogany, Night, Stone); they recolour only the board squares
 - `frontend/src/config.ts` — Frontend config: `API` base (default `""` = same origin; override via `VITE_API_BASE`) and UI timing constants
 - `frontend/src/opponents.ts` — `opponentLabel` ("Maia 1300" / "Stockfish ~1000"), picker value encoding
 - `frontend/src/boardTap.ts` — tap-to-move rules (`tapAction`: select / switch piece / move / deselect) and selection highlights (gold ring + dots on legal targets) shared by Play and SolveBoard; `viewport.ts` has `useNarrow` (≤768px phone layout) and `DRAG_ACTIVATION_PX` (12px on touch so taps aren't lost as tiny drags)
@@ -87,7 +89,7 @@ to `CHESS_OWNER`. Links: `/?id=<public_id>` opens that game's Review (`frontend/
 - `frontend/src/pages/Home.tsx` — Dashboard: win/loss stats + completed game history table
 - `frontend/src/pages/Play.tsx` — Interactive board, play vs engine, color/ELO selection, eval bar, hint, best-reply
 - `frontend/src/pages/Review.tsx` — Annotated game replay with nav controls, run-analysis button, accuracy score
-- `frontend/src/pages/Learn.tsx` — Learn hub: corpus topics by group (from `/api/learn`), puzzle rating, review button, Openings card
+- `frontend/src/pages/Learn.tsx` — Learn hub: Topics (cards by group with state + accuracy) / My progress (`learn/Progress.tsx`: rating chart, every topic's state: not started → read → practising → passed), review button, Openings card
 - `frontend/src/pages/learn/` — `TopicLesson` (Read → Find the move → Practise), `SolveBoard` (solve a line on the board: first try counts, retry, show solution, promotion), `solveLine.ts` (pure solving rules, vitest), `BookText`, `ReviewSession`, `api.ts` (typed `/api/learn` client), `PieceLessons.tsx` + `Openings.tsx` (the original hand-written lessons), `shared.tsx`/`boardUtils.ts`
 - `backend/learn_api.py` — `/api/learn` router; `learn_content.py` (topics + book.json → lessons/drills); `learn_progress.py` (Elo puzzle rating, 1/3/7/21-day review schedule, topic progress)
 - `frontend/src/data/openings.ts` — Opening data: 18 openings (58 lines) with SAN move sequences
@@ -115,6 +117,8 @@ to `CHESS_OWNER`. Links: `/?id=<public_id>` opens that game's Review (`frontend/
 | GET | `/api/learn/topics/{slug}/puzzles?n=10` | Unseen quality Lichess puzzles near your rating (±150, widened to ±300); 503 if the puzzle DB isn't built |
 | POST | `/api/learn/attempts` | Record a try (`kind` puzzle/book, `context` lesson/review, `solved` first try, `revealed`). Only a first lesson attempt at a puzzle is rated; misses enter the review queue |
 | GET | `/api/learn/reviews` | Positions due for review, oldest first |
+| GET | `/api/learn/status` | Per-topic state (`new`/`studied`/`practising`/`passed`), puzzle + drill counts, reviews queued, last activity; `rating_history`, `counts`. Passed = ≥70% of the last 10–20 rated puzzles (book-only topics: every drill's latest try solved) |
+| POST | `/api/learn/topics/{slug}/studied` | Mark a topic's reading as opened (first time only) |
 | POST | `/api/learn/judge` | `{fen, move, expected}` → is a different move in a book drill also good (win% loss < 5) or mate? |
 
 **Note on `GET /api/game/{id}` moves:** Per-move `eval_cp` and `eval_loss_cp` are stored in the DB during analysis but NOT returned in the response. Only `classification` and `best_uci` are returned. Live evals are returned during gameplay via `POST /api/game/{id}/move`; both come from the full-strength engine.
@@ -170,7 +174,7 @@ Playing the engine's own top move is always `best`. Same thresholds live in `gam
 
 ## Assisted Tracking
 
-Games record `assisted = 1` when the player uses the **Show Best Next** hint button or **Take Back** while the game is active (not after game over). The after-the-fact buttons (**Show Best Last**, **Eval Last Move**, **Show Best Last Reply**, auto-eval highlights) do NOT count as assisted.
+Games record `assisted = 1` when the player uses the **Hint: best move** button or **Take back** while the game is active (not after game over). The after-the-fact buttons (**Best instead of mine**, **Rate my last move**, **Their best reply**, the **Rate every move** highlights) do NOT count as assisted.
 
 ## DB Schema
 
@@ -206,7 +210,7 @@ learn_attempts   -- every try at a Learn position (the daily trainer's input)
   kind ("puzzle"|"book"), ref (Lichess id | "<book>:<Fig>"), topic, context ("lesson"|"review"),
   solved (first try), revealed, seconds, puzzle_rating, rating_before/rating_after (null = unrated), created_at
 learn_reviews    -- spaced review queue: user, kind, ref (unique together), topic, step (0..3 → 1/3/7/21 days), due_at
-learn_user_state -- (user, key) → value: puzzle_rating, rated_attempts (old single-user learn_state copied to CHESS_OWNER)
+learn_user_state -- (user, key) → value: puzzle_rating, rated_attempts, studied:<slug> (epoch secs) (old single-user learn_state copied to CHESS_OWNER)
 ```
 
 ## Testing

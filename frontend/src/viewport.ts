@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 export const NARROW_PX = 768;
-/** .app-main horizontal padding on narrow screens (index.css: padding 16px 12px). */
+/** .app-main horizontal padding on narrow screens (index.css: padding 18px 12px). */
 const NARROW_GUTTER = 24;
 
 function narrowNow(): boolean {
@@ -52,10 +52,10 @@ export const COARSE_POINTER =
 export const DRAG_ACTIVATION_PX = COARSE_POINTER ? 12 : 3;
 
 /** .app-main max width and horizontal padding on desktop (index.css). */
-const MAIN_MAX = 1120;
+const MAIN_MAX = 1200;
 const MAIN_PAD_X = 56;
 /** Header + top/bottom page padding above and below the board on desktop. */
-const DESKTOP_CHROME_Y = 52 + 36 + 28;
+const DESKTOP_CHROME_Y = 60 + 32 + 28;
 
 /**
  * Board size for a page with the board beside a `panel`-px side panel: on desktop as large

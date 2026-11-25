@@ -19,7 +19,7 @@ from .db import LearnAttempt, LearnReview, LearnState, get_db
 from .game_utils import mover_win_loss
 from .identity import current_user
 from .learn_content import Corpus, find_drill, load_corpus, topic_detail, topic_summaries
-from .learn_progress import START_RATING, next_review, topic_progress, update_rating
+from .learn_progress import START_RATING, next_review, topic_progress, topic_status, update_rating
 
 router = APIRouter(prefix="/api/learn")
 
@@ -116,6 +116,74 @@ def topic_puzzles(slug: str, n: int = 10, db: Session = Depends(get_db),
     puzzles = select_puzzles(puzzles_db, detail["themes"], rating, max(1, min(n, 20)), seen)
     return {"rating": rating, "puzzles": [{k: p[k] for k in ("id", "fen", "moves", "rating", "themes")}
                                            for p in puzzles]}
+
+
+# ── Status: what you've studied, practised and passed ───────────────────────────
+def _iso(t: datetime.datetime | None) -> str | None:
+    return t.isoformat() if t else None
+
+
+@router.post("/topics/{slug}/studied")
+def mark_studied(slug: str, db: Session = Depends(get_db), corpus: Corpus = Depends(get_corpus),
+                 user: str = Depends(current_user)):
+    """The lesson's reading was opened. First time only; returns when."""
+    if topic_detail(corpus, slug) is None:
+        raise HTTPException(404, "Unknown topic")
+    key = f"studied:{slug}"
+    if db.get(LearnState, (user, key)) is None:
+        _set_state(db, user, key, _now().timestamp())
+        db.commit()
+    return {"studied_at": _iso(datetime.datetime.fromtimestamp(_state(db, user, key, 0)))}
+
+
+@router.get("/status")
+def learn_status(db: Session = Depends(get_db), corpus: Corpus = Depends(get_corpus),
+                 user: str = Depends(current_user)):
+    studied = {r.key.removeprefix("studied:"): datetime.datetime.fromtimestamp(r.value)
+               for r in db.query(LearnState).filter(LearnState.user == user, LearnState.key.like("studied:%"))}
+    attempts = (db.query(LearnAttempt).filter(LearnAttempt.user == user).order_by(LearnAttempt.id).all())
+    last: dict[str, datetime.datetime] = {}
+    book_latest: dict[str, bool] = {}
+    for a in attempts:
+        if a.topic:
+            last[a.topic] = a.created_at
+        if a.kind == "book":
+            book_latest[a.ref] = bool(a.solved)
+    queued: dict[str, int] = {}
+    for (topic,) in db.query(LearnReview.topic).filter(LearnReview.user == user):
+        queued[topic] = queued.get(topic, 0) + 1
+
+    groups: list[dict] = []
+    counts = {"new": 0, "studied": 0, "practising": 0, "passed": 0}
+    for t in topic_summaries(corpus):
+        slug = t["slug"]
+        refs = [d["ref"] for d in (topic_detail(corpus, slug) or {}).get("drills", [])]
+        tried = [book_latest[r] for r in refs if r in book_latest]
+        drills = {"total": len(refs), "tried": len(tried), "solved": sum(tried)}
+        puzzles = (topic_progress([bool(a.solved) for a in attempts
+                                   if a.topic == slug and a.kind == "puzzle" and a.rating_after is not None])
+                   if t["has_puzzles"] else {"attempts": 0, "solved": 0, "accuracy": None})
+        status = topic_status(studied=slug in studied, has_puzzles=t["has_puzzles"], puzzles=puzzles,
+                              drills_total=drills["total"], drills_tried=drills["tried"],
+                              drills_solved=drills["solved"])
+        counts[status] += 1
+        if not groups or groups[-1]["group"] != t["group"]:
+            groups.append({"group": t["group"], "topics": []})
+        groups[-1]["topics"].append({
+            "slug": slug, "title": t["title"], "has_puzzles": t["has_puzzles"], "status": status,
+            "studied_at": _iso(studied.get(slug)), "last_activity": _iso(last.get(slug)),
+            "puzzles": puzzles, "drills": drills, "reviews_queued": queued.get(slug, 0)})
+
+    rated = [a for a in attempts if a.rating_after is not None]
+    return {
+        "rating": _state(db, user, "puzzle_rating", START_RATING),
+        "rated_attempts": len(rated),
+        "rating_history": [{"at": _iso(a.created_at), "rating": round(a.rating_after, 1)} for a in rated[-200:]],
+        "reviews_due": db.query(LearnReview).filter(LearnReview.user == user, LearnReview.due_at <= _now()).count(),
+        "reviews_queued": sum(queued.values()),
+        "counts": counts,
+        "groups": groups,
+    }
 
 
 # ── Attempts & review ───────────────────────────────────────────────────────────

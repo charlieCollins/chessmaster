@@ -55,3 +55,19 @@ export const judge = (fen: string, move: string, expected: string) =>
   fetch(`${API}/api/learn/judge`, { method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ fen, move, expected }) })
     .then(r => json<{ accepted: boolean; verdict: string }>(r));
+
+export type TopicState = "new" | "studied" | "practising" | "passed";
+export interface TopicStatus {
+  slug: string; title: string; has_puzzles: boolean; status: TopicState;
+  studied_at: string | null; last_activity: string | null;
+  puzzles: Progress; drills: { total: number; tried: number; solved: number }; reviews_queued: number;
+}
+export interface LearnStatus {
+  rating: number; rated_attempts: number; rating_history: { at: string; rating: number }[];
+  reviews_due: number; reviews_queued: number;
+  counts: Record<TopicState, number>;
+  groups: { group: string; topics: TopicStatus[] }[];
+}
+export const getStatus = () => fetch(`${API}/api/learn/status`).then(r => json<LearnStatus>(r));
+export const markStudied = (slug: string) =>
+  fetch(`${API}/api/learn/topics/${slug}/studied`, { method: "POST" }).then(r => json<{ studied_at: string }>(r));

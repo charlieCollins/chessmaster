@@ -4,6 +4,8 @@ import { API } from "../config";
 import GameIdBadge from "../components/GameIdBadge";
 import { type EngineKind, opponentLabel } from "../opponents";
 import { useNarrow } from "../viewport";
+import { PageHead, QualityDot, SectionHead, Stat } from "../ui";
+import { QUALITIES } from "../classify";
 
 interface GameRow {
   game_id: number;
@@ -41,19 +43,28 @@ function playerOutcome(g: GameRow): "Win" | "Loss" | "Draw" {
   return "Loss";
 }
 
-// Fixed footprint for the Delete / Yes·No cell so confirming doesn't resize the table
-const DELETE_CELL_WIDTH = 92;
-const DELETE_BTN: React.CSSProperties = { padding: "5px 0", fontSize: 13, minWidth: 0, minHeight: 0, textAlign: "center" };
-
-/** Small pill shown next to the result when a hint/takeback was used. */
-function HintTag() {
+/** Review + delete (with a Yes/No confirm in the same footprint, so rows don't reflow). */
+function RowActions({ confirming, onReview, onAsk, onConfirm, onCancel }: {
+  confirming: boolean; onReview: () => void; onAsk: () => void; onConfirm: () => void; onCancel: () => void;
+}) {
   return (
-    <span title="Used Show Best Next or Take Back during this game" style={{
-      marginLeft: 8, fontSize: 11, fontWeight: 500, color: "var(--text-dim)", border: "1px solid var(--border-hi)",
-      borderRadius: 10, padding: "1px 7px", verticalAlign: "middle",
-    }}>assisted</span>
+    <div className="row" style={{ gap: 6, justifyContent: "flex-end", flexWrap: "nowrap" }}>
+      <button className="sm" onClick={onReview}>Review</button>
+      <div style={{ width: 96, display: "flex", gap: 4 }}>
+        {confirming ? (
+          <>
+            <button className="danger sm" style={{ flex: 1, padding: 0, color: "var(--loss)" }} title="Yes, delete this game" onClick={onConfirm}>Delete</button>
+            <button className="quiet sm" style={{ flex: 1, padding: 0 }} title="Keep this game" onClick={onCancel}>Keep</button>
+          </>
+        ) : (
+          <button className="danger sm" style={{ flex: 1 }} title="Delete this game (asks to confirm)" onClick={onAsk}>Delete</button>
+        )}
+      </div>
+    </div>
   );
 }
+
+const OUTCOME_CLASS = { Win: "win", Loss: "loss", Draw: "draw" } as const;
 
 function fmtDate(iso: string | null) {
   if (!iso) return "—";
@@ -111,216 +122,132 @@ export default function Home({ onPlay, onReview }: HomeProps) {
     }
   }
 
-  const MOVE_COLORS: Record<string, string> = {
-    best: "var(--best)", good: "var(--good)",
-    inaccuracy: "var(--inaccuracy)", mistake: "var(--mistake)", blunder: "var(--blunder)",
-  };
-
   if (loading) {
-    return <div className="dim mono" style={{ paddingTop: 64, textAlign: "center" }}>Loading…</div>;
+    return <p className="muted" style={{ paddingTop: 64, textAlign: "center" }}>Loading your games…</p>;
   }
-  if (!stats || !games) return (
-    <div>
-      {loadError && <div style={{ color: "var(--loss)", fontFamily: "var(--font-mono)", fontSize: 13 }}>{loadError}</div>}
-    </div>
-  );
+  if (!stats || !games) return <p className="error" role="alert">{loadError ?? "Couldn't load your games."}</p>;
 
   const s = stats;
   const g = games;
+  const counted = QUALITIES.reduce((n, k) => n + (s.move_counts[k] ?? 0), 0);
+  const rowActions = (row: GameRow) => (
+    <RowActions
+      confirming={confirmDeleteId === row.game_id}
+      onReview={() => onReview(row.game_id)}
+      onAsk={() => setConfirmDeleteId(row.game_id)}
+      onConfirm={() => { deleteGame(row.game_id); setConfirmDeleteId(null); }}
+      onCancel={() => setConfirmDeleteId(null)}
+    />
+  );
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 36 }}>
+    <div>
+      <PageHead
+        title="Your games"
+        lead={s.total ? "Every finished game, and how accurately you played it." : "Finish a game and it shows up here, ready to review."}
+        actions={<button className="primary lg" onClick={onPlay}>New game</button>}
+      />
 
-      {/* Load error */}
-      {loadError && (
-        <div style={{ padding: "12px 16px", background: "rgba(224,90,90,0.08)", border: "1px solid var(--loss)", borderRadius: "var(--radius)", color: "var(--loss)", fontFamily: "var(--font-mono)", fontSize: 12, marginBottom: 16 }}>
-          {loadError}
+      <div className="stats">
+        <Stat value={s.total} label="Played" />
+        <Stat value={s.wins} label="Won" tone="var(--win)" />
+        <Stat value={s.losses} label="Lost" tone="var(--loss)" />
+        <Stat value={s.draws} label="Drawn" />
+        <Stat value={s.accuracy !== null ? `${s.accuracy}%` : "–"} label="Accuracy" tone="var(--accent)" />
+      </div>
+
+      {s.analyzed_games > 0 && counted > 0 && (
+        <div className="panel tight" style={{ marginTop: 12 }}>
+          <div className="row between small" style={{ marginBottom: 10 }}>
+            <span style={{ fontWeight: 600 }}>Your moves</span>
+            <span className="muted">from {s.analyzed_games} analysed game{s.analyzed_games !== 1 ? "s" : ""}</span>
+          </div>
+          <div style={{ display: "flex", height: 10, borderRadius: 5, overflow: "hidden", gap: 2 }} aria-hidden>
+            {QUALITIES.map(k => s.move_counts[k] ? (
+              <div key={k} style={{ flex: s.move_counts[k], background: `var(--${k})` }} />
+            ) : null)}
+          </div>
+          <div className="legend" style={{ marginTop: 10 }}>
+            {QUALITIES.map(k => (
+              <span key={k}><QualityDot q={k} /><b style={{ color: "var(--text)", fontWeight: 600 }}>{s.move_counts[k] ?? 0}</b>{k}</span>
+            ))}
+          </div>
         </div>
       )}
 
-      {/* CTA */}
-      <div>
-        <button className="primary" onClick={onPlay} style={{ fontSize: 16, padding: "12px 32px" }}>
-          ▶ New Game
-        </button>
-      </div>
+      <SectionHead title="History" aside={g.length ? `${g.length} game${g.length !== 1 ? "s" : ""}` : undefined} />
+      {deleteError && <p className="error" role="alert" style={{ marginBottom: 8 }}>{deleteError}</p>}
 
-      {/* Stats */}
-      <section>
-        <div className="section-label">Record</div>
-        <div className="stat-grid">
-          <div className="stat-cell">
-            <div className="stat-value">{s.total}</div>
-            <div className="stat-label">Played</div>
-          </div>
-          <div className="stat-cell">
-            <div className="stat-value" style={{ color: "var(--win)" }}>{s.wins}</div>
-            <div className="stat-label">Wins</div>
-          </div>
-          <div className="stat-cell">
-            <div className="stat-value" style={{ color: "var(--loss)" }}>{s.losses}</div>
-            <div className="stat-label">Losses</div>
-          </div>
-          <div className="stat-cell">
-            <div className="stat-value" style={{ color: "var(--draw)" }}>{s.draws}</div>
-            <div className="stat-label">Draws</div>
-          </div>
-          <div className="stat-cell">
-            <div className="stat-value" style={{ color: "var(--gold)" }}>
-              {s.accuracy !== null ? `${s.accuracy}%` : "—"}
-            </div>
-            <div className="stat-label">Accuracy</div>
-          </div>
+      {g.length === 0 ? (
+        <div className="empty-state">
+          <h3>No finished games yet</h3>
+          <p style={{ margin: "0 auto 16px" }}>Abandoned games aren't saved. Play one to the end to see it here.</p>
+          <button className="primary" onClick={onPlay}>Play a game</button>
         </div>
-
-        {/* Move breakdown */}
-        {s.analyzed_games > 0 && Object.keys(s.move_counts).length > 0 && (
-          <div style={{ display: "flex", gap: "6px 22px", flexWrap: "wrap", fontSize: 14, marginTop: -12, fontVariantNumeric: "tabular-nums" }}>
-            {(["best", "good", "inaccuracy", "mistake", "blunder"] as const).map((k) =>
-              s.move_counts[k] ? (
-                <span key={k} style={{ color: MOVE_COLORS[k], fontWeight: 600 }}>
-                  {s.move_counts[k]} <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>{k}</span>
-                </span>
-              ) : null
-            )}
-            <span className="dim">
-              from {s.analyzed_games} analyzed game{s.analyzed_games !== 1 ? "s" : ""}
-            </span>
-          </div>
-        )}
-      </section>
-
-      {/* Game history */}
-      <section>
-        <div className="section-label">Game History</div>
-
-        {deleteError && (
-          <div style={{
-            marginBottom: 8, padding: "6px 12px", borderRadius: 4,
-            background: "var(--danger-dim, rgba(220,50,50,0.15))",
-            color: "var(--loss)", fontSize: 13, fontFamily: "var(--font-mono)",
-          }}>
-            {deleteError}
-          </div>
-        )}
-
-        {g.length === 0 ? (
-          <div className="empty-state">
-            No completed games yet.<br />
-            <span style={{ color: "var(--text-dim)", fontSize: 13, marginTop: 8, display: "block" }}>
-              Resigned or aborted games don't count — finish a game to see it here.
-            </span>
-          </div>
-        ) : narrow ? (
-          // Phones: one compact card per game instead of the 11-column table
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {g.map((row) => {
-              const outcome = playerOutcome(row);
-              const outcomeColor = outcome === "Win" ? "var(--win)" : outcome === "Loss" ? "var(--loss)" : "var(--draw)";
-              return (
-                <div key={row.game_id} style={{ background: "var(--surface)", border: "1px solid var(--border)",
-                  borderRadius: "var(--radius)", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ color: outcomeColor, fontWeight: 600, minWidth: 34 }}>{outcome}</span>
-                    <span style={{ fontSize: 15, color: "var(--text-bright)" }}>{opponentLabel(row.engine, row.engine_elo)}</span>
-                    <span style={{ marginLeft: "auto" }}><GameIdBadge id={row.public_id} size={11} /></span>
-                  </div>
-                  <div className="dim" style={{ fontSize: 13, display: "flex", gap: "2px 12px", flexWrap: "wrap" }}>
-                    <span style={{ textTransform: "capitalize" }}>{row.player_color}</span>
-                    <span>{Math.ceil(row.move_count / 2)} moves</span>
-                    <span>{row.accuracy !== null ? `${Math.round(row.accuracy)}% acc` : "not analyzed"}</span>
-                    {row.assisted && <span>assisted</span>}
-                    <span>{fmtDate(row.played_at)}</span>
-                  </div>
-                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                    <button onClick={() => onReview(row.game_id)} style={{ padding: "6px 18px" }}>Review</button>
-                    <div style={{ width: DELETE_CELL_WIDTH, display: "flex", gap: 4 }}>
-                      {confirmDeleteId === row.game_id ? (
-                        <>
-                          <button className="danger-ghost" style={{ ...DELETE_BTN, flex: 1, color: "var(--loss)", fontWeight: 600 }}
-                            onClick={() => { deleteGame(row.game_id); setConfirmDeleteId(null); }}>Yes</button>
-                          <button className="ghost" style={{ ...DELETE_BTN, flex: 1 }} onClick={() => setConfirmDeleteId(null)}>No</button>
-                        </>
-                      ) : (
-                        <button className="danger-ghost" style={{ ...DELETE_BTN, flex: 1 }} onClick={() => setConfirmDeleteId(row.game_id)}>Delete</button>
-                      )}
-                    </div>
-                  </div>
+      ) : narrow ? (
+        // Phones: one card per game instead of the wide table
+        <div className="stack sm">
+          {g.map(row => {
+            const outcome = playerOutcome(row);
+            return (
+              <div key={row.game_id} className="panel tight stack sm">
+                <div className="row" style={{ gap: 10 }}>
+                  <span className={OUTCOME_CLASS[outcome]} style={{ fontWeight: 600, minWidth: 36 }}>{outcome}</span>
+                  <span style={{ color: "var(--text-strong)", fontWeight: 500 }}>{opponentLabel(row.engine, row.engine_elo)}</span>
+                  <span style={{ marginLeft: "auto" }}><GameIdBadge id={row.public_id} size={12} /></span>
                 </div>
-              );
-            })}
-          </div>
-        ) : (
+                <div className="row small muted" style={{ gap: "2px 14px" }}>
+                  <span>As {row.player_color}</span>
+                  <span>{Math.ceil(row.move_count / 2)} moves</span>
+                  <span>{row.accuracy !== null ? `${Math.round(row.accuracy)}% accuracy` : "Not analysed"}</span>
+                  {row.assisted && <span>Assisted</span>}
+                  <span>{fmtDate(row.played_at)}</span>
+                </div>
+                {rowActions(row)}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="table-wrap">
           <table className="data-table">
             <thead>
               <tr>
-                <th>Game</th>
-                <th>Date</th>
-                <th>Opponent</th>
-                <th>You played</th>
                 <th>Result</th>
-                <th style={{ textAlign: "right" }}>Moves</th>
-                <th style={{ textAlign: "right" }}>Accuracy</th>
+                <th>Opponent</th>
+                <th>As</th>
+                <th className="num">Moves</th>
+                <th className="num">Accuracy</th>
+                <th>Played</th>
+                <th>Game</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {g.map((row) => {
+              {g.map(row => {
                 const outcome = playerOutcome(row);
-                const outcomeColor =
-                  outcome === "Win" ? "var(--win)" :
-                  outcome === "Loss" ? "var(--loss)" : "var(--draw)";
                 return (
                   <tr key={row.game_id}>
-                    <td><GameIdBadge id={row.public_id} size={12} /></td>
-                    <td className="dim">{fmtDate(row.played_at)}</td>
-                    <td style={{ color: "var(--text-bright)" }}>{opponentLabel(row.engine, row.engine_elo)}</td>
-                    <td style={{ textTransform: "capitalize" }}>{row.player_color}</td>
                     <td>
-                      <span style={{ color: outcomeColor, fontWeight: 600 }}>{outcome}</span>
-                      {row.assisted && <HintTag />}
+                      <span className={OUTCOME_CLASS[outcome]} style={{ fontWeight: 600 }}>{outcome}</span>
+                      {row.assisted && <span className="tag" style={{ marginLeft: 8, height: 22 }} title="A hint or take-back was used">Assisted</span>}
                     </td>
-                    <td style={{ textAlign: "right" }}>{Math.ceil(row.move_count / 2)}</td>
-                    <td style={{ textAlign: "right" }} title={row.analyzed ? undefined : "Not analyzed yet — open Review to analyze"}>
-                      {row.accuracy !== null ? `${Math.round(row.accuracy)}%` : <span className="dim">—</span>}
+                    <td style={{ color: "var(--text-strong)", fontWeight: 500 }}>{opponentLabel(row.engine, row.engine_elo)}</td>
+                    <td style={{ textTransform: "capitalize" }}>{row.player_color}</td>
+                    <td className="num">{Math.ceil(row.move_count / 2)}</td>
+                    <td className="num" title={row.analyzed ? undefined : "Not analysed yet. Open Review to analyse it."}>
+                      {row.accuracy !== null ? `${Math.round(row.accuracy)}%` : <span className="faint">–</span>}
                     </td>
-                    <td style={{ textAlign: "right" }}>
-                      {/* Both delete states occupy the same fixed box so the table never reflows */}
-                      <div style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-                        <button onClick={() => onReview(row.game_id)} style={{ padding: "5px 16px" }}>
-                          Review
-                        </button>
-                        <div style={{ width: DELETE_CELL_WIDTH, display: "flex", gap: 4 }}>
-                          {confirmDeleteId === row.game_id ? (
-                            <>
-                              <button className="danger-ghost" title="Yes, delete this game"
-                                style={{ ...DELETE_BTN, flex: 1, color: "var(--loss)", fontWeight: 600 }}
-                                onClick={() => { deleteGame(row.game_id); setConfirmDeleteId(null); }}>
-                                Yes
-                              </button>
-                              <button className="ghost" title="Keep this game"
-                                style={{ ...DELETE_BTN, flex: 1 }}
-                                onClick={() => setConfirmDeleteId(null)}>
-                                No
-                              </button>
-                            </>
-                          ) : (
-                            <button className="danger-ghost" title="Delete this game (asks to confirm)"
-                              style={{ ...DELETE_BTN, flex: 1 }}
-                              onClick={() => setConfirmDeleteId(row.game_id)}>
-                              Delete
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </td>
+                    <td className="muted">{fmtDate(row.played_at)}</td>
+                    <td><GameIdBadge id={row.public_id} size={12} /></td>
+                    <td>{rowActions(row)}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-        )}
-      </section>
+        </div>
+      )}
     </div>
   );
 }

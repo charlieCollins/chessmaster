@@ -15,21 +15,21 @@ function inline(text: string): ReactNode[] {
 
 export default function BookText({ blocks, diagrams }: { blocks: Block[]; diagrams: Record<string, BookDiagram> }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 760 }}>
+    <div className="book stack" style={{ gap: 14 }}>
       {blocks.map((b, i) => {
         if (b.kind === "para")
-          return <p key={i} style={{ fontSize: 14, lineHeight: 1.75, color: "var(--text)" }}>{inline(b.text)}</p>;
+          return <p key={i}>{inline(b.text)}</p>;
         if (b.kind === "moves")
           return (
-            <div key={i} className="mono" style={{ fontSize: 12, color: "var(--text-dim)", whiteSpace: "pre-line",
-              borderLeft: "2px solid var(--border-hi)", paddingLeft: 10 }}>
+            <div key={i} className="mono small muted" style={{ whiteSpace: "pre-line", lineHeight: 1.6,
+              borderLeft: "2px solid var(--accent-line)", paddingLeft: 12 }}>
               {b.text}
             </div>
           );
         const d = diagrams[b.fig];
         if (!d) return null;
         const side = d.fen.split(" ")[1] === "b" ? "Black" : "White";
-        const caption = d.kind === "position" ? `Diagram ${b.fig.slice(3)} · ${side} to move` : `Diagram ${b.fig.slice(3)} · illustration`;
+        const caption = d.kind === "position" ? `Diagram ${b.fig.slice(3)}: ${side} to move` : `Diagram ${b.fig.slice(3)}`;
         return <div key={i} style={{ alignSelf: "flex-start", margin: "6px 0" }}><MiniBoard fen={d.fen} caption={caption} /></div>;
       })}
     </div>

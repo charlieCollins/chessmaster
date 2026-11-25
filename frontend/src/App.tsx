@@ -7,32 +7,30 @@ import Learn from "./pages/Learn";
 import { THEMES, ThemeContext } from "./themes";
 import { API } from "./config";
 import { clearGameLink, gameRefFromUrl } from "./links";
-import "./App.css";
 
 type Page = "home" | "play" | "review" | "learn";
 
-// Cburnett king (lichess/Wikimedia) — gold, no background
+// Cburnett king (lichess/Wikimedia) in brass
 function KingLogo() {
   return (
-    <svg
-      width="46" height="46"
-      viewBox="0 0 45 45"
-      xmlns="http://www.w3.org/2000/svg"
-      style={{ display: "block", flexShrink: 0 }}
-    >
+    <svg width="30" height="30" viewBox="0 0 45 45" xmlns="http://www.w3.org/2000/svg" aria-hidden style={{ display: "block", flexShrink: 0 }}>
       <g fill="none" fillRule="evenodd" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5">
-        {/* cross */}
-        <path stroke="var(--gold)" strokeLinejoin="miter" d="M22.5 11.63V6M20 8h5"/>
-        {/* crown body */}
-        <path fill="var(--gold)" stroke="var(--gold-dim)" strokeLinecap="butt" strokeLinejoin="miter"
+        <path stroke="var(--accent)" strokeLinejoin="miter" d="M22.5 11.63V6M20 8h5"/>
+        <path fill="var(--accent)" stroke="var(--gold-dim)" strokeLinecap="butt" strokeLinejoin="miter"
           d="M22.5 25s4.5-7.5 3-10.5c0 0-1-2.5-3-2.5s-3 2.5-3 2.5c-1.5 3 3 10.5 3 10.5"/>
-        {/* base / skirt */}
-        <path fill="var(--gold)" stroke="var(--gold-dim)"
+        <path fill="var(--accent)" stroke="var(--gold-dim)"
           d="M11.5 37c5.5 3.5 15.5 3.5 21 0v-7s9-4.5 6-10.5c-4-6.5-13.5-3.5-16 4V27v-3.5c-3.5-7.5-13-10.5-16-4-3 6 5 10 5 10V37z"/>
-        {/* skirt lines */}
-        <path stroke="var(--gold-dim)"
-          d="M11.5 30c5.5-3 15.5-3 21 0m-21 3.5c5.5-3 15.5-3 21 0m-21 3.5c5.5-3 15.5-3 21 0"/>
+        <path stroke="var(--gold-dim)" d="M11.5 30c5.5-3 15.5-3 21 0m-21 3.5c5.5-3 15.5-3 21 0m-21 3.5c5.5-3 15.5-3 21 0"/>
       </g>
+    </svg>
+  );
+}
+
+/** Four squares of the current board theme; click to cycle. */
+function BoardSwatch({ dark, light }: { dark: string; light: string }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 2 2" aria-hidden style={{ borderRadius: 3, display: "block" }}>
+      <rect width="2" height="2" fill={light} /><rect width="1" height="1" fill={dark} /><rect x="1" y="1" width="1" height="1" fill={dark} />
     </svg>
   );
 }
@@ -56,11 +54,6 @@ export default function App() {
   }
 
   const boardTheme = THEMES[themeIdx];
-
-  useEffect(() => {
-    const root = document.documentElement.style;
-    Object.entries(boardTheme.vars).forEach(([k, v]) => root.setProperty(k, v));
-  }, [boardTheme]);
 
   // Deep link: /?id=k7m2qx (or ?id=123) opens that game's review
   useEffect(() => {
@@ -89,55 +82,25 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <div
-          onClick={() => navigate("home")}
-          style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", flexShrink: 0 }}
-        >
+        <button className="wordmark" onClick={() => navigate("home")} aria-label="Chess trainer — home">
           <KingLogo />
-          <div style={{ display: "flex", flexDirection: "column", lineHeight: 1, gap: 2 }}>
-            <span style={{
-              fontFamily: "var(--font-display)",
-              fontSize: 16,
-              fontWeight: 700,
-              color: "var(--gold)",
-              letterSpacing: "0.22em",
-            }}>CHESS</span>
-            <span style={{
-              fontFamily: "var(--font-display)",
-              fontSize: 9,
-              fontWeight: 600,
-              color: "var(--text-dim)",
-              letterSpacing: "0.3em",
-            }}>TRAINER</span>
-          </div>
-        </div>
+          <span>Chess trainer</span>
+        </button>
 
-        <nav className="app-nav">
-          <button className={`nav-btn${page === "home"   ? " active" : ""}`} onClick={() => navigate("home")}>Home</button>
-          <button className={`nav-btn${page === "play"   ? " active" : ""}`} onClick={() => navigate("play")}>Play</button>
-          {reviewGameId && (
-            <button className={`nav-btn${page === "review" ? " active" : ""}`} onClick={() => navigate("review")}>Review</button>
-          )}
-          <button className={`nav-btn${page === "learn"  ? " active" : ""}`} onClick={() => navigate("learn")}>Learn</button>
-          <button
-            onClick={cycleTheme}
-            title={`Board theme: ${boardTheme.name} (click to cycle)`}
-            style={{
-              width: 32, height: 32,
-              borderRadius: "50%",
-              padding: 0,
-              fontSize: 16,
-              lineHeight: 1,
-              border: "1px solid var(--border-hi)",
-              background: "var(--raised)",
-              cursor: "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            {boardTheme.icon}
-          </button>
+        <nav className="app-nav" aria-label="Main">
+          {(["home", "play", ...(reviewGameId ? ["review"] as const : []), "learn"] as Page[]).map(p => (
+            <button key={p} className="nav-tab" aria-current={page === p ? "page" : undefined} onClick={() => navigate(p)}>
+              {p[0].toUpperCase() + p.slice(1)}
+            </button>
+          ))}
         </nav>
+
+        <div className="header-tools">
+          <button className="quiet sm" onClick={cycleTheme} title={`Board colours: ${boardTheme.name} — click to change`}
+            aria-label={`Board colours: ${boardTheme.name}`}>
+            <BoardSwatch dark={boardTheme.dark} light={boardTheme.light} />
+          </button>
+        </div>
       </header>
 
       <main className="app-main">
