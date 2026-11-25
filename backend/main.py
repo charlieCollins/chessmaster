@@ -11,6 +11,7 @@ import chess
 from .db import get_db, Game, Move, init_db, SessionLocal
 from .engine import ChessEngine, EngineSlot, MaiaEngine, maia_available
 from .learn_api import router as learn_router
+from .identity import current_user
 from .game_utils import reconstruct_board, generate_pgn, accuracy_summary
 from .analysis import analyze_game
 from .game_files import write_game_file, delete_game_file, write_missing_game_files
@@ -112,6 +113,15 @@ def _check_and_end_game(game: Game, board: chess.Board, game_id: int, db: Sessio
     return None
 
 
+def _own_game(db: Session, game_id: int, user: str) -> Game:
+    """The game if it belongs to the signed-in user; 404 otherwise (another user's game
+    looks exactly like a missing one)."""
+    game = db.get(Game, game_id)
+    if game is None or game.user != user:
+        raise HTTPException(404, "Game not found")
+    return game
+
+
 # ── Routes ────────────────────────────────────────────────────────────────────
 @app.get("/api/engines")
 def list_engines():
@@ -120,7 +130,7 @@ def list_engines():
 
 
 @app.post("/api/game")
-def start_game(req: StartGameRequest, db: Session = Depends(get_db)):
+def start_game(req: StartGameRequest, db: Session = Depends(get_db), user: str = Depends(current_user)):
     if req.engine == "maia":
         if not maia_available():
             raise HTTPException(400, "Maia is not installed on this server")
@@ -146,7 +156,7 @@ def start_game(req: StartGameRequest, db: Session = Depends(get_db)):
         first_san = board.san(move)
         board.push(move)
 
-    game = Game(player_color=req.player_color, engine_elo=req.engine_elo, engine=req.engine, result="*")
+    game = Game(player_color=req.player_color, engine_elo=req.engine_elo, engine=req.engine, result="*", user=user)
     db.add(game)
     db.flush()  # assigns game.id
     if engine_first_move:
@@ -166,8 +176,8 @@ def start_game(req: StartGameRequest, db: Session = Depends(get_db)):
 
 
 @app.get("/api/game/{game_id}")
-def get_game(game_id: int, db: Session = Depends(get_db)):
-    game = db.get(Game, game_id)
+def get_game(game_id: int, db: Session = Depends(get_db), user: str = Depends(current_user)):
+    game = _own_game(db, game_id, user)
     if not game:
         raise HTTPException(404, "Game not found")
     board = reconstruct_board(game_id, db)
@@ -205,8 +215,8 @@ def get_game(game_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/api/game/{game_id}/move")
-def make_move(game_id: int, req: MoveRequest, db: Session = Depends(get_db)):
-    game = db.get(Game, game_id)
+def make_move(game_id: int, req: MoveRequest, db: Session = Depends(get_db), user: str = Depends(current_user)):
+    game = _own_game(db, game_id, user)
     if not game:
         raise HTTPException(404, "Game not found")
     if game.result != "*":
@@ -276,8 +286,8 @@ def make_move(game_id: int, req: MoveRequest, db: Session = Depends(get_db)):
 
 
 @app.delete("/api/game/{game_id}")
-def delete_game(game_id: int, db: Session = Depends(get_db)):
-    game = db.get(Game, game_id)
+def delete_game(game_id: int, db: Session = Depends(get_db), user: str = Depends(current_user)):
+    game = _own_game(db, game_id, user)
     if not game:
         raise HTTPException(404, "Game not found")
     public_id = game.public_id
@@ -289,8 +299,8 @@ def delete_game(game_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/api/game/{game_id}/analyze")
-def analyze(game_id: int, db: Session = Depends(get_db)):
-    game = db.get(Game, game_id)
+def analyze(game_id: int, db: Session = Depends(get_db), user: str = Depends(current_user)):
+    game = _own_game(db, game_id, user)
     if not game:
         raise HTTPException(404, "Game not found")
     if game.result == "*":
@@ -306,12 +316,28 @@ def analyze(game_id: int, db: Session = Depends(get_db)):
     return {"status": "analyzed", "game_id": game_id}
 
 
+@app.get("/api/me")
+def me(user: str = Depends(current_user)):
+    return {"user": user}
+
+
+@app.get("/api/games/lookup")
+def lookup_game(id: str, db: Session = Depends(get_db), user: str = Depends(current_user)):
+    """Resolve a shareable game reference (?id=k7m2qx or ?id=123) to the user's game."""
+    ref = id.strip()
+    q = db.query(Game).filter(Game.user == user)
+    game = q.filter(Game.id == int(ref)).first() if ref.isdigit() else q.filter(Game.public_id == ref.lower()).first()
+    if game is None:
+        raise HTTPException(404, "Game not found")
+    return {"game_id": game.id, "public_id": game.public_id}
+
+
 @app.get("/api/games")
-def list_games(db: Session = Depends(get_db)):
+def list_games(db: Session = Depends(get_db), user: str = Depends(current_user)):
     rows_raw = (
         db.query(Game, func.count(Move.id).label("move_count"))
         .outerjoin(Move, Move.game_id == Game.id)
-        .filter(Game.result != "*")
+        .filter(Game.result != "*", Game.user == user)
         .group_by(Game.id)
         .order_by(Game.id.desc())
         .limit(50)
@@ -350,8 +376,8 @@ def list_games(db: Session = Depends(get_db)):
 
 
 @app.get("/api/stats")
-def get_stats(db: Session = Depends(get_db)):
-    games = db.query(Game).filter(Game.result != "*").all()
+def get_stats(db: Session = Depends(get_db), user: str = Depends(current_user)):
+    games = db.query(Game).filter(Game.result != "*", Game.user == user).all()
     total = len(games)
     wins = losses = draws = 0
     for g in games:
@@ -388,8 +414,8 @@ def get_stats(db: Session = Depends(get_db)):
 
 
 @app.get("/api/game/{game_id}/hint")
-def get_hint(game_id: int, db: Session = Depends(get_db)):
-    game = db.get(Game, game_id)
+def get_hint(game_id: int, db: Session = Depends(get_db), user: str = Depends(current_user)):
+    game = _own_game(db, game_id, user)
     if not game:
         raise HTTPException(404, "Game not found")
     board = reconstruct_board(game_id, db)
@@ -433,8 +459,8 @@ def engine_best(req: BestMoveRequest):
 
 
 @app.post("/api/game/{game_id}/takeback")
-def takeback(game_id: int, db: Session = Depends(get_db)):
-    game = db.get(Game, game_id)
+def takeback(game_id: int, db: Session = Depends(get_db), user: str = Depends(current_user)):
+    game = _own_game(db, game_id, user)
     if not game:
         raise HTTPException(404, "Game not found")
     if game.result != "*":
@@ -452,8 +478,8 @@ def takeback(game_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/api/game/{game_id}/resign")
-def resign_game(game_id: int, db: Session = Depends(get_db)):
-    game = db.get(Game, game_id)
+def resign_game(game_id: int, db: Session = Depends(get_db), user: str = Depends(current_user)):
+    game = _own_game(db, game_id, user)
     if not game:
         raise HTTPException(404, "Game not found")
     if game.result != "*":

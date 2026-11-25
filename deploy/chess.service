@@ -12,6 +12,9 @@ Environment="PUZZLES_DB=/opt/chess/data/puzzles.sqlite"
 Environment="STOCKFISH_PATH=/usr/games/stockfish"
 Environment="LC0_PATH=/opt/chess/engines/lc0"
 Environment="MAIA_WEIGHTS_DIR=/opt/chess/engines/maia"
+# Server-only settings, not in git: CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD (verify the Cloudflare
+# Access identity token → per-user data) and CHESS_OWNER (who owns pre-sign-in data).
+EnvironmentFile=-/etc/chess/chess.env
 RuntimeDirectory=chess
 # nginx (www-data) must be able to reach the socket
 UMask=0007

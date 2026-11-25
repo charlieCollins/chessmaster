@@ -50,6 +50,7 @@ class Game(Base):
     source = Column(String, default="local")
     analyzed = Column(Integer, default=0)       # 0 = not analyzed, 1 = analyzed
     assisted = Column(Integer, default=0)       # 1 if player used hint during this game
+    user = Column(String, default="local", index=True)  # signed-in user (email); see backend/identity.py
 
 
 class Move(Base):
@@ -74,6 +75,7 @@ class LearnAttempt(Base):
     __tablename__ = "learn_attempts"
     __table_args__ = (Index("ix_learn_attempts_ref", "kind", "ref"), Index("ix_learn_attempts_topic", "topic"))
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user = Column(String, default="local", index=True)
     kind = Column(String, nullable=False)        # "puzzle" | "book"
     ref = Column(String, nullable=False)         # Lichess puzzle id | "<book slug>:<Fig>"
     topic = Column(String, nullable=True)
@@ -90,8 +92,9 @@ class LearnAttempt(Base):
 class LearnReview(Base):
     """A missed position waiting for spaced review."""
     __tablename__ = "learn_reviews"
-    __table_args__ = (Index("ux_learn_reviews_item", "kind", "ref", unique=True),)
+    __table_args__ = (Index("ux_learn_reviews_user_item", "user", "kind", "ref", unique=True),)
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user = Column(String, default="local", nullable=False)
     kind = Column(String, nullable=False)
     ref = Column(String, nullable=False)
     topic = Column(String, nullable=True)
@@ -101,8 +104,10 @@ class LearnReview(Base):
 
 
 class LearnState(Base):
-    """Key/value learner state: puzzle_rating, rated_attempts."""
-    __tablename__ = "learn_state"
+    """Per-user key/value learner state: puzzle_rating, rated_attempts.
+    (Replaces the single-user learn_state table; init_db copies its rows to the owner.)"""
+    __tablename__ = "learn_user_state"
+    user = Column(String, primary_key=True)
     key = Column(String, primary_key=True)
     value = Column(Float, nullable=False)
 
@@ -118,6 +123,9 @@ def init_db(engine=None):
             "ALTER TABLE moves ADD COLUMN eval_loss_cp REAL",
             "ALTER TABLE games ADD COLUMN engine TEXT DEFAULT 'stockfish'",
             "ALTER TABLE games ADD COLUMN public_id TEXT",
+            "ALTER TABLE games ADD COLUMN user TEXT",
+            "ALTER TABLE learn_attempts ADD COLUMN user TEXT",
+            "ALTER TABLE learn_reviews ADD COLUMN user TEXT",
         ]:
             try:
                 conn.execute(text(stmt))
@@ -129,6 +137,21 @@ def init_db(engine=None):
         for (gid,) in conn.execute(text("SELECT id FROM games WHERE public_id IS NULL")).fetchall():
             conn.execute(text("UPDATE games SET public_id = :pid WHERE id = :id"), {"pid": new_public_id(), "id": gid})
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ux_games_public_id ON games (public_id)"))
+        conn.commit()
+        # Per-user data (2026-11-25): rows from before sign-in belong to the owner
+        # (CHESS_OWNER, set on the server in /etc/chess/chess.env; "local" otherwise).
+        owner = os.getenv("CHESS_OWNER", "local")
+        for table in ("games", "learn_attempts", "learn_reviews"):
+            conn.execute(text(f"UPDATE {table} SET user = :o WHERE user IS NULL"), {"o": owner})
+        conn.execute(text("DROP INDEX IF EXISTS ux_learn_reviews_item"))
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ux_learn_reviews_user_item ON learn_reviews (user, kind, ref)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_games_user ON games (user)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_learn_attempts_user ON learn_attempts (user)"))
+        has_old_state = conn.execute(text(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='learn_state'")).first()
+        if has_old_state:
+            conn.execute(text("INSERT OR IGNORE INTO learn_user_state (user, key, value) "
+                              "SELECT :o, key, value FROM learn_state"), {"o": owner})
         conn.commit()
         # Index for DBs created before it was part of the model.
         try:
