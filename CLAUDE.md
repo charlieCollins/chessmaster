@@ -220,9 +220,16 @@ Test files use `os.environ["DATABASE_URL"] = "sqlite://"` at module level (befor
   7-day session) — the app itself has no auth, and `deploy/deploy.sh` takes the site down if the API answers without a login
 - **Origin VM**: `instance-20260207-141914` (zone `us-west1-b`, project `azimondia`), Ubuntu 25.10, 1 GB RAM, shared
   with other sites (recipes, readydogrescue, amazonasguide). Reach it with `gcloud compute ssh instance-20260207-141914 --zone us-west1-b`.
-- **Deploy**: `deploy/deploy.sh` from this machine (main must be pushed — the VM pulls from GitHub; the frontend is
-  built locally). Flags: `--puzzles` (48 MB puzzles-lite DB), `--engines` (lc0 + Maia), `--data` (REPLACE server
-  chess.db + games with local; old DB kept as `data/chess.db.bak-*`), `--first` = all three. Server side: `deploy/server.sh`.
+- **Deploy (automatic)**: GitHub Actions `.github/workflows/ci-deploy.yml` — every PR to `main` runs backend tests
+  (pytest + Stockfish) and frontend tests/lint/build; every push/merge to `main` also deploys: builds the frontend,
+  ssh's to the VM as `chess-deploy` (key in secret `DEPLOY_SSH_KEY`, forced to `deploy/ci/ssh-command.sh`, which can
+  only run `deploy <sha>` / `disable-site`; the sha must be on GitHub main), then fails and disables the site if the
+  public API answers without a Cloudflare Access login. Re-run from the Actions tab (workflow_dispatch).
+  Secrets: `DEPLOY_SSH_KEY`, `DEPLOY_HOST` (VM IP — ephemeral: update it if the VM is ever stopped/started),
+  `DEPLOY_KNOWN_HOSTS`. VM-side install: `deploy/ci/setup-vm.sh` (re-run it after editing `deploy/ci/*.sh`).
+- **Deploy (manual)**: `deploy/deploy.sh` from this machine, for what CI doesn't ship. Flags: `--puzzles` (48 MB
+  puzzles-lite DB), `--engines` (lc0 + Maia), `--data` (REPLACE server chess.db + games with local; old DB kept as
+  `data/chess.db.bak-*`), `--first` = all three. Both paths end in `deploy/server.sh` on the VM.
 - **On the VM**: code `/opt/chess`; `/opt/chess/data/{chess.db,games/,puzzles.sqlite}`; `/opt/chess/engines/{lc0,maia/}`;
   systemd `chess` (user `chess`, `MemoryMax=450M`, env paths in `deploy/chess.service`); nginx `deploy/nginx.conf`
   serves `frontend/dist/` and proxies `/api/` to `/run/chess/chess.sock`.

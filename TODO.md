@@ -6,6 +6,7 @@
       App + data + Maia are on the VM (`deploy/deploy.sh --first`).
 - [x] Cloudflare Access: `chess.azimondia.com` added to the `azimondia-all` Access app (same policy and
       4 emails as recipes, 7-day session) on 2026-11-24; anonymous requests get a 302 to the login.
+- [x] CI/CD: PRs to main run tests; merges deploy automatically (GitHub Actions + restricted deploy key), 2026-11-24.
 - [ ] Optionally restrict origin 443 to Cloudflare IP ranges in the GCP firewall so the VM can't be hit directly
       (bypassing Cloudflare Access).
 
