@@ -9,7 +9,8 @@ from sqlalchemy import create_engine, inspect
 
 from backend.db import init_db
 from backend.learn_progress import (START_RATING, REVIEW_DAYS, expected_score, update_rating,
-                                    next_review, topic_progress)
+                                    next_review, topic_progress, topic_status,
+                                    PASS_MIN_PUZZLES, PASS_ACCURACY)
 
 T = datetime(2026, 11, 23, 12, 0, tzinfo=timezone.utc)
 
@@ -63,3 +64,29 @@ def test_tables_created():
     init_db(eng)
     names = set(inspect(eng).get_table_names())
     assert {"learn_attempts", "learn_reviews", "learn_user_state"} <= names
+
+
+def _puz(attempts, solved):
+    return {"attempts": attempts, "solved": solved, "accuracy": solved / attempts if attempts >= 5 else None}
+
+
+def test_status_new_then_studied():
+    assert topic_status(studied=False, has_puzzles=True, puzzles=_puz(0, 0), drills_total=2, drills_tried=0, drills_solved=0) == "new"
+    assert topic_status(studied=True, has_puzzles=True, puzzles=_puz(0, 0), drills_total=2, drills_tried=0, drills_solved=0) == "studied"
+
+
+def test_status_practising_until_enough_good_puzzles():
+    assert (PASS_MIN_PUZZLES, PASS_ACCURACY) == (10, 0.7)
+    assert topic_status(studied=False, has_puzzles=True, puzzles=_puz(3, 3), drills_total=0, drills_tried=0, drills_solved=0) == "practising"
+    assert topic_status(studied=True, has_puzzles=True, puzzles=_puz(10, 6), drills_total=0, drills_tried=0, drills_solved=0) == "practising"
+    assert topic_status(studied=True, has_puzzles=True, puzzles=_puz(10, 7), drills_total=0, drills_tried=0, drills_solved=0) == "passed"
+    assert topic_status(studied=True, has_puzzles=True, puzzles=_puz(9, 9), drills_total=0, drills_tried=0, drills_solved=0) == "practising"
+
+
+def test_status_book_only_topic_passes_when_every_drill_is_solved():
+    kw = dict(studied=True, has_puzzles=False, puzzles=_puz(0, 0), drills_total=3)
+    assert topic_status(**kw, drills_tried=1, drills_solved=1) == "practising"
+    assert topic_status(**kw, drills_tried=3, drills_solved=2) == "practising"
+    assert topic_status(**kw, drills_tried=3, drills_solved=3) == "passed"
+    assert topic_status(studied=True, has_puzzles=False, puzzles=_puz(0, 0), drills_total=0,
+                        drills_tried=0, drills_solved=0) == "studied"     # nothing to pass

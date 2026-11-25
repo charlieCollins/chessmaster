@@ -36,3 +36,21 @@ def topic_progress(results: list[bool]) -> dict:
     solved = sum(recent)
     acc = solved / len(recent) if len(recent) >= PROGRESS_MIN else None
     return {"attempts": len(recent), "solved": solved, "accuracy": acc}
+
+
+PASS_MIN_PUZZLES = 10             # a puzzle topic is passed with >= 70% of the last 10–20 rated puzzles solved
+PASS_ACCURACY = 0.7
+
+
+def topic_status(*, studied: bool, has_puzzles: bool, puzzles: dict, drills_total: int,
+                 drills_tried: int, drills_solved: int) -> str:
+    """new → studied (lesson read) → practising (any attempt) → passed.
+    Puzzle topics pass on recent puzzle accuracy; book-only topics when every drill's latest try is solved."""
+    if has_puzzles:
+        if puzzles["attempts"] >= PASS_MIN_PUZZLES and puzzles["solved"] / puzzles["attempts"] >= PASS_ACCURACY:
+            return "passed"
+    elif drills_total and drills_solved == drills_total:
+        return "passed"
+    if puzzles["attempts"] or drills_tried:
+        return "practising"
+    return "studied" if studied else "new"
